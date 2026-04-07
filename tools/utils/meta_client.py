@@ -40,6 +40,7 @@ CAMPAIGN_INSIGHT_FIELDS = [
     "clicks",
     "ctr",
     "actions",
+    "unique_actions",
     "action_values",
     "cost_per_action_type",
     "reach",
@@ -67,11 +68,13 @@ AD_INSIGHT_FIELDS = [
     "clicks",
     "ctr",
     "actions",
+    "unique_actions",
     "action_values",
     "cost_per_action_type",
     "video_30_sec_watched_actions",
     "video_p100_watched_actions",
     "video_play_actions",
+    "video_thruplay_watched_actions",
 ]
 
 
@@ -150,8 +153,16 @@ def _parse_campaign_insight(row: Dict) -> Dict[str, Any]:
 
     spend = float(row.get("spend", 0)) if row.get("spend") else None
     impressions = int(row.get("impressions", 0)) if row.get("impressions") else None
-    clicks = int(row.get("clicks", 0)) if row.get("clicks") else None
-    ctr = float(row.get("ctr", 0)) if row.get("ctr") else None
+
+    # Use unique_link_click from unique_actions (deduplicated per person)
+    unique_actions = row.get("unique_actions", [])
+    unique_link_clicks = _extract_action_value(unique_actions, "link_click")
+    clicks = int(unique_link_clicks) if unique_link_clicks is not None else None
+
+    # Recompute CTR from unique link clicks
+    ctr = None
+    if clicks is not None and impressions and impressions > 0:
+        ctr = round(clicks / impressions * 100, 2)
 
     purchases = _extract_action_value(actions, "purchase")
     purchase_value = _extract_action_value(action_values, "purchase")
@@ -204,6 +215,7 @@ def fetch_campaign_insights(
         },
         "time_increment": 1,  # Daily breakdown for CW aggregation
         "level": "campaign",
+        "action_attribution_windows": ["28d_click", "1d_view"],
     }
 
     def _fetch():
@@ -277,6 +289,7 @@ def fetch_ad_insights(
         },
         "time_increment": 1,
         "level": "ad",
+        "action_attribution_windows": ["28d_click", "1d_view"],
     }
 
     def _fetch():
@@ -313,23 +326,32 @@ def fetch_ad_insights(
         metrics = _parse_campaign_insight(row_dict)
 
         # Video-specific metrics (computed deterministically)
+        # video_play_actions = any play (even 0s) — used as denominator for hold rate
+        # video_thruplay = 15s or completion (whichever first) — better quality signal
+        # Hook rate = 3-second views / impressions (% who watched past 3s)
+        # Hold rate = completions / 3-second views (% who finished after hooking)
         video_plays = _extract_action_value(row_dict.get("video_play_actions"), "video_view")
-        video_30s = _extract_action_value(row_dict.get("video_30_sec_watched_actions"), "video_view")
+        video_3s = _extract_action_value(row_dict.get("video_thruplay_watched_actions"), "video_view")
         video_complete = _extract_action_value(row_dict.get("video_p100_watched_actions"), "video_view")
+
+        # Fallback: if thruplay not available (None), use video_play_actions for hook rate
+        # Note: 0 thruplays is valid — only fall back when it's actually None
+        hook_source = video_3s if video_3s is not None else video_plays
 
         impressions = metrics.get("impressions")
         hook_rate = None
         hold_rate = None
 
-        if video_plays is not None and impressions and impressions > 0:
-            hook_rate = round(video_plays / impressions * 100, 2)
-        if video_complete is not None and video_plays and video_plays > 0:
-            hold_rate = round(video_complete / video_plays * 100, 2)
+        if hook_source is not None and impressions and impressions > 0:
+            hook_rate = round(hook_source / impressions * 100, 2)
+        if video_complete is not None and hook_source and hook_source > 0:
+            hold_rate = round(video_complete / hook_source * 100, 2)
 
         metrics["hook_rate"] = hook_rate
         metrics["hold_rate"] = hold_rate
         metrics["video_plays"] = video_plays
         metrics["video_completions"] = video_complete
+        metrics["video_thruplay"] = video_3s
 
         # Conversion rate
         clicks = metrics.get("clicks")
@@ -346,7 +368,7 @@ def fetch_ad_insights(
             for key in ["spend", "impressions", "clicks", "purchases", "purchase_value",
                         "add_to_cart", "checkout_initiated", "payment_info_added",
                         "content_view", "landing_page_view", "reach",
-                        "video_plays", "video_completions"]:
+                        "video_plays", "video_completions", "video_thruplay"]:
                 if metrics.get(key) is not None:
                     if existing.get(key) is None:
                         existing[key] = metrics[key]
@@ -360,14 +382,181 @@ def fetch_ad_insights(
                 existing["roas"] = round(existing["purchase_value"] / existing["spend"], 2)
             if existing.get("purchases") and existing["purchases"] > 0 and existing.get("spend"):
                 existing["cpa"] = round(existing["spend"] / existing["purchases"], 2)
-            if existing.get("video_plays") and existing.get("impressions") and existing["impressions"] > 0:
-                existing["hook_rate"] = round(existing["video_plays"] / existing["impressions"] * 100, 2)
-            if existing.get("video_completions") and existing.get("video_plays") and existing["video_plays"] > 0:
-                existing["hold_rate"] = round(existing["video_completions"] / existing["video_plays"] * 100, 2)
+            # Hook rate: thruplay (3s views) / impressions — fallback to video_plays
+            # Use explicit None check — 0 thruplays is valid (not missing)
+            hook_src = existing.get("video_thruplay") if existing.get("video_thruplay") is not None else existing.get("video_plays")
+            if hook_src and existing.get("impressions") and existing["impressions"] > 0:
+                existing["hook_rate"] = round(hook_src / existing["impressions"] * 100, 2)
+            # Hold rate: completions / thruplay (3s views)
+            if existing.get("video_completions") and hook_src and hook_src > 0:
+                existing["hold_rate"] = round(existing["video_completions"] / hook_src * 100, 2)
             if existing.get("purchases") and existing.get("clicks") and existing["clicks"] > 0:
                 existing["conversion_rate"] = round(existing["purchases"] / existing["clicks"] * 100, 2)
 
     return list(ads.values())
+
+
+def fetch_ad_age_gender_breakdown(
+    account_id: str,
+    ad_id: str,
+    start_date: date,
+    end_date: date,
+) -> List[Dict[str, Any]]:
+    """Fetch age/gender breakdown for a specific ad. Returns list of {age, gender, spend, impressions, purchases, roas}."""
+    init_api()
+    account = AdAccount(account_id)
+
+    params = {
+        "time_range": {
+            "since": date_to_meta_format(start_date),
+            "until": date_to_meta_format(end_date),
+        },
+        "filtering": [{"field": "ad.id", "operator": "EQUAL", "value": ad_id}],
+        "breakdowns": ["age", "gender"],
+        "level": "ad",
+        "action_attribution_windows": ["28d_click", "1d_view"],
+    }
+
+    fields = ["spend", "impressions", "clicks", "actions", "action_values"]
+
+    def _fetch():
+        return account.get_insights(fields=fields, params=params)
+
+    raw = _retry_with_backoff(_fetch)
+    results = []
+
+    for row in raw:
+        row_dict = dict(row)
+        spend = float(row_dict.get("spend", 0)) if row_dict.get("spend") else 0
+        impressions = int(row_dict.get("impressions", 0)) if row_dict.get("impressions") else 0
+        purchases = _extract_action_value(row_dict.get("actions"), "purchase") or 0
+        purchase_value = _extract_action_value(row_dict.get("action_values"), "purchase") or 0
+        roas = round(purchase_value / spend, 2) if spend > 0 else None
+
+        results.append({
+            "age": row_dict.get("age", "unknown"),
+            "gender": row_dict.get("gender", "unknown"),
+            "spend": round(spend, 2),
+            "impressions": impressions,
+            "purchases": int(purchases),
+            "roas": roas,
+        })
+
+    return results
+
+
+def fetch_ad_placement_breakdown(
+    account_id: str,
+    ad_id: str,
+    start_date: date,
+    end_date: date,
+) -> List[Dict[str, Any]]:
+    """Fetch placement breakdown for a specific ad. Returns list of {platform, position, label, spend, impressions, roas}."""
+    init_api()
+    account = AdAccount(account_id)
+
+    params = {
+        "time_range": {
+            "since": date_to_meta_format(start_date),
+            "until": date_to_meta_format(end_date),
+        },
+        "filtering": [{"field": "ad.id", "operator": "EQUAL", "value": ad_id}],
+        "breakdowns": ["publisher_platform", "platform_position"],
+        "level": "ad",
+        "action_attribution_windows": ["28d_click", "1d_view"],
+    }
+
+    fields = ["spend", "impressions", "clicks", "actions", "action_values"]
+
+    def _fetch():
+        return account.get_insights(fields=fields, params=params)
+
+    raw = _retry_with_backoff(_fetch)
+
+    # Map raw positions to display labels
+    LABEL_MAP = {
+        ("instagram", "feed"): "IG Feed",
+        ("instagram", "story"): "IG Stories",
+        ("instagram", "reels_overlay"): "IG Reels",
+        ("instagram", "explore"): "IG Explore",
+        ("instagram", "profile_feed"): "IG Profile",
+        ("facebook", "feed"): "FB Feed",
+        ("facebook", "story"): "FB Stories",
+        ("facebook", "marketplace"): "FB Marketplace",
+        ("facebook", "video_feeds"): "FB Video",
+        ("facebook", "right_hand_column"): "FB Right Column",
+        ("audience_network", "classic"): "Audience Network",
+        ("messenger", "messenger_inbox"): "Messenger",
+    }
+
+    results = []
+    for row in raw:
+        row_dict = dict(row)
+        platform = row_dict.get("publisher_platform", "unknown")
+        position = row_dict.get("platform_position", "unknown")
+
+        spend = float(row_dict.get("spend", 0)) if row_dict.get("spend") else 0
+        impressions = int(row_dict.get("impressions", 0)) if row_dict.get("impressions") else 0
+        purchases = _extract_action_value(row_dict.get("actions"), "purchase") or 0
+        purchase_value = _extract_action_value(row_dict.get("action_values"), "purchase") or 0
+        roas = round(purchase_value / spend, 2) if spend > 0 else None
+
+        label = LABEL_MAP.get((platform, position), f"{platform} {position}".title())
+
+        results.append({
+            "platform": platform,
+            "position": position,
+            "label": label,
+            "spend": round(spend, 2),
+            "impressions": impressions,
+            "roas": roas,
+        })
+
+    return results
+
+
+def fetch_ad_video_retention(
+    ad_id: str,
+    start_date: date,
+    end_date: date,
+) -> Optional[Dict[str, Any]]:
+    """Fetch video retention curve for an ad. Returns {curve: [{pct_index, retention}]} or None."""
+    init_api()
+    ad = Ad(ad_id)
+
+    params = {
+        "time_range": {
+            "since": date_to_meta_format(start_date),
+            "until": date_to_meta_format(end_date),
+        },
+        "action_attribution_windows": ["28d_click", "1d_view"],
+    }
+
+    try:
+        def _fetch():
+            return ad.get_insights(fields=["video_play_curve_actions"], params=params)
+
+        raw = _retry_with_backoff(_fetch)
+
+        for row in raw:
+            row_dict = dict(row)
+            curve_data = row_dict.get("video_play_curve_actions")
+            if curve_data and isinstance(curve_data, list):
+                # video_play_curve_actions returns a list of dicts with 'action_type' and 'value'
+                # The 'value' is a list of retention percentages at each percentile of video length
+                for entry in curve_data:
+                    values = entry.get("value")
+                    if values and isinstance(values, list):
+                        curve = [
+                            {"pct_index": i, "retention": float(v)}
+                            for i, v in enumerate(values)
+                        ]
+                        return {"duration_seconds": None, "curve": curve}
+
+        return None
+    except Exception as e:
+        logger.warning(f"Could not fetch video retention for ad {ad_id}: {e}")
+        return None
 
 
 def fetch_ad_creative_thumbnails(account_id: str, ad_ids: List[str]) -> Dict[str, Optional[str]]:

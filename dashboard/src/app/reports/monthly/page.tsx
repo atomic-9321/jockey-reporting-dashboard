@@ -1,70 +1,141 @@
 "use client";
 
-import { useState } from "react";
-import { FunnelChart } from "@/components/charts/FunnelChart";
+import { useEffect, useState } from "react";
+import { PyramidFunnel } from "@/components/charts/PyramidFunnel";
 import { KPICard } from "@/components/charts/KPICard";
 import { MetricsTable } from "@/components/reports/MetricsTable";
+import { ReportInsights } from "@/components/reports/ReportInsights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
 import {
   formatCurrency,
   formatNumber,
   formatPercent,
   CURRENCY_SYMBOL,
+  cwKeyToMonth,
 } from "@/lib/constants";
-import type { CampaignMetrics, FunnelStep } from "@/lib/types";
+import {
+  aggregateMetrics,
+  buildFunnel,
+  getAvailableCWs,
+  getAvailableMonths,
+  computeWoWChange,
+} from "@/lib/metrics";
 import { cn } from "@/lib/utils";
-
-const DEMO_MONTHS = ["2026-01", "2026-02", "2026-03", "2026-04"];
-
-const DEMO_METRICS: CampaignMetrics = {
-  spend: 12450, impressions: 1850000, clicks: 42300, ctr: 2.29,
-  purchases: 385, purchase_value: 28750, roas: 2.31, cpa: 32.34,
-  add_to_cart: 2150, checkout_initiated: 1280, payment_info_added: 980,
-  content_view: 68500, landing_page_view: 35200, reach: 1200000,
-};
-
-const DEMO_FUNNEL: FunnelStep[] = [
-  { key: "impressions", label: "Impressions", value: 1850000, previous_value: null, drop_off_percent: null, conversion_from_top: 100 },
-  { key: "clicks", label: "Clicks", value: 42300, previous_value: 1850000, drop_off_percent: 97.71, conversion_from_top: 2.29 },
-  { key: "landing_page_view", label: "Website Views", value: 35200, previous_value: 42300, drop_off_percent: 16.78, conversion_from_top: 1.90 },
-  { key: "add_to_cart", label: "Add to Cart", value: 2150, previous_value: 35200, drop_off_percent: 93.89, conversion_from_top: 0.12 },
-  { key: "checkout_initiated", label: "Checkout", value: 1280, previous_value: 2150, drop_off_percent: 40.47, conversion_from_top: 0.07 },
-  { key: "payment_info_added", label: "Payment Info", value: 980, previous_value: 1280, drop_off_percent: 23.44, conversion_from_top: 0.05 },
-  { key: "purchases", label: "Purchases", value: 385, previous_value: 980, drop_off_percent: 60.71, conversion_from_top: 0.02 },
-];
+import type { CampaignData, Campaign } from "@/lib/types";
 
 function formatMonthLabel(month: string): string {
   const [year, m] = month.split("-");
-  const names = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${names[parseInt(m)]} ${year}`;
+}
+
+function getCWsForMonth(allCWs: string[], monthStr: string): string[] {
+  return allCWs.filter((cw) => cwKeyToMonth(cw) === monthStr);
 }
 
 export default function MonthlyReportPage() {
   const { region, currency } = useRegion();
-  const [selectedMonth, setSelectedMonth] = useState(DEMO_MONTHS[DEMO_MONTHS.length - 1]);
+  const [data, setData] = useState<CampaignData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/data/${region.toLowerCase()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d.campaigns);
+        const cws = getAvailableCWs(d.campaigns?.campaigns || []);
+        const months = getAvailableMonths(cws);
+        setSelectedMonth(months[months.length - 1] || null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [region]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48 bg-secondary/30" />
+        <Skeleton className="h-8 w-full max-w-md bg-secondary/30" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl bg-secondary/30" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !data.campaigns) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <p className="text-sm">No data available for {region}.</p>
+      </div>
+    );
+  }
+
+  const campaigns: Campaign[] = data.campaigns;
+  const allCWs = getAvailableCWs(campaigns);
+  const months = getAvailableMonths(allCWs);
+
+  if (!selectedMonth) return null;
+
+  const monthCWs = getCWsForMonth(allCWs, selectedMonth);
+  const monthIdx = months.indexOf(selectedMonth);
+  const prevMonth = monthIdx > 0 ? months[monthIdx - 1] : null;
+  const prevMonthCWs = prevMonth ? getCWsForMonth(allCWs, prevMonth) : [];
+
+  const monthMetrics = aggregateMetrics(
+    monthCWs.flatMap((cw) =>
+      campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+    )
+  );
+
+  const prevMetrics = prevMonthCWs.length > 0
+    ? aggregateMetrics(
+        prevMonthCWs.flatMap((cw) =>
+          campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+        )
+      )
+    : null;
+
+  const momChanges = prevMetrics ? computeWoWChange(monthMetrics, prevMetrics) : null;
+  const funnel = buildFunnel(monthMetrics);
+
+  const campaignRows = campaigns
+    .map((c) => ({
+      name: c.campaign_name,
+      metrics: aggregateMetrics(
+        monthCWs.map((cw) => c.weekly_breakdown[cw]).filter(Boolean)
+      ),
+    }))
+    .filter((c) => c.metrics.spend !== null && c.metrics.spend > 0)
+    .sort((a, b) => (b.metrics.spend ?? 0) - (a.metrics.spend ?? 0));
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="animate-fade-in">
         <h1 className="text-2xl font-bold tracking-tight">Monthly Report</h1>
-        <p className="text-sm text-muted-foreground">
-          Jockey {region} — Aggregated monthly performance ({CURRENCY_SYMBOL[currency]})
+        <p className="text-sm text-muted-foreground/70 font-mono">
+          Jockey {region} &middot; Aggregated monthly performance ({CURRENCY_SYMBOL[currency]})
         </p>
       </div>
 
       {/* Month Selector */}
       <div className="flex gap-2 overflow-x-auto pb-2">
-        {DEMO_MONTHS.map((month) => (
+        {months.map((month) => (
           <Badge
             key={month}
             variant={selectedMonth === month ? "default" : "outline"}
             className={cn(
-              "cursor-pointer shrink-0 px-3 py-1.5 text-xs font-medium transition-all",
+              "cursor-pointer shrink-0 px-3 py-1.5 text-xs font-medium transition-all duration-300",
               selectedMonth === month
-                ? "bg-primary text-primary-foreground glow-cyan"
-                : "hover:bg-secondary"
+                ? "bg-primary text-primary-foreground badge-glow"
+                : "hover:bg-secondary/50 hover:border-primary/20 border-border/30"
             )}
             onClick={() => setSelectedMonth(month)}
           >
@@ -75,29 +146,46 @@ export default function MonthlyReportPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KPICard label="Investment" value={formatCurrency(DEMO_METRICS.spend, currency)} trend={5.2} />
-        <KPICard label="Revenue" value={formatCurrency(DEMO_METRICS.purchase_value, currency)} trend={8.7} />
-        <KPICard label="Ad ROAS" value={`${DEMO_METRICS.roas}x`} trend={3.3} />
-        <KPICard label="Purchases" value={formatNumber(DEMO_METRICS.purchases)} trend={12.1} />
-        <KPICard label="CPA" value={formatCurrency(DEMO_METRICS.cpa, currency)} trend={-2.4} />
-        <KPICard label="CTR" value={formatPercent(DEMO_METRICS.ctr)} trend={1.1} />
+        <KPICard label="Investment" value={formatCurrency(monthMetrics.spend, currency)} trend={momChanges?.spend ?? null} color="indigo" delay={0} />
+        <KPICard label="Revenue" value={formatCurrency(monthMetrics.purchase_value, currency)} trend={momChanges?.purchase_value ?? null} color="emerald" delay={75} />
+        <KPICard label="Ad ROAS" value={monthMetrics.roas !== null ? `${monthMetrics.roas}x` : "N/A"} trend={momChanges?.roas ?? null} color="cyan" delay={150} />
+        <KPICard label="Purchases" value={formatNumber(monthMetrics.purchases)} trend={momChanges?.purchases ?? null} color="amber" delay={225} />
+        <KPICard label="CPA" value={formatCurrency(monthMetrics.cpa, currency)} trend={momChanges?.cpa ?? null} color="rose" delay={300} />
+        <KPICard label="CTR" value={formatPercent(monthMetrics.ctr)} color="violet" delay={375} />
       </div>
 
       {/* Funnel */}
-      <Card className="glass-card border-border/50">
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-300">
         <CardHeader>
           <CardTitle className="text-base">
-            Monthly Funnel — {formatMonthLabel(selectedMonth)}
+            Monthly Funnel
           </CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            {formatMonthLabel(selectedMonth)} &middot; {monthCWs.length} weeks
+          </p>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={DEMO_FUNNEL} />
+          <PyramidFunnel steps={funnel} />
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground text-center">
-        Demo data shown. Connect API credentials for real metrics.
-      </p>
+      {/* Campaign Table */}
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-375">
+        <CardHeader>
+          <CardTitle className="text-base">Campaign Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MetricsTable campaigns={campaignRows} currency={currency} />
+        </CardContent>
+      </Card>
+
+      {/* AI Insights + Creative Recommendations */}
+      <ReportInsights
+        region={region}
+        period={monthCWs[monthCWs.length - 1] || selectedMonth}
+        periodType="monthly"
+        campaignNames={campaignRows.map((c) => c.name)}
+      />
     </div>
   );
 }

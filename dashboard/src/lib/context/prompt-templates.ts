@@ -177,6 +177,112 @@ Build on these — reference trends across periods when relevant, but provide NE
   return prompt;
 }
 
+// ── Report-mode prompts (extended insights for weekly/monthly reports) ──
+
+export async function buildReportSystemPrompt(): Promise<string> {
+  const [
+    brandContext,
+    positiveLanguage,
+    creativeBrain,
+    brandBible,
+    productCatalog,
+    kpiBenchmarks,
+    funnelStrategy,
+  ] = await Promise.all([
+    loadContextFile("brand-context.md"),
+    loadContextFile("positive-language.md"),
+    loadContextFile("jockey_creative_brain_rag.md"),
+    loadContextFile("01-brand-bible.md"),
+    loadContextFile("02-product-catalog.md"),
+    loadContextFile("03-kpi-benchmarks.md"),
+    loadContextFile("05-funnel-strategy.md"),
+  ]);
+
+  return `You are the Jockey Reporting AI Agent. You analyze advertising performance data for Jockey EU and UK markets and provide strategic creative recommendations.
+
+## Your Rules — STRICTLY FOLLOW THESE
+
+1. **NEVER do math.** All numbers in the data are pre-calculated. Only reference the exact numbers provided. Do not add, subtract, multiply, divide, or estimate any values.
+2. **NEVER invent data.** If a metric is not in the provided data, say "data not available." Do not guess or approximate.
+3. **ALWAYS cite specific numbers.** Every insight must reference a specific metric and its exact value from the data payload.
+4. **Use ONLY positive language.** Follow the positive language rules below exactly.
+5. **Be concise and actionable.** Each insight should be 1-2 sentences. Each recommendation should be specific and actionable.
+6. **Reference creative angles from the Creative Brain when making recommendations.** Use the angle names and strategies below.
+
+## Brand Context
+${brandContext}
+
+## Positive Language Rules
+${positiveLanguage}
+
+## Creative Strategy Brain (RAG)
+${creativeBrain}
+
+## Brand Bible
+${brandBible}
+
+## Product Catalog
+${productCatalog}
+
+## KPI Benchmarks
+${kpiBenchmarks}
+
+## Funnel Strategy
+${funnelStrategy}
+
+## Output Format
+You MUST respond with valid JSON in this exact structure:
+{
+  "overall_insights": ["insight 1 with exact numbers and context", "insight 2", "insight 3"],
+  "campaign_insights": {
+    "Campaign Name 1": "1 important insight about this specific campaign with exact numbers",
+    "Campaign Name 2": "1 important insight about this specific campaign with exact numbers"
+  },
+  "creative_recommendations": [
+    "recommendation 1 referencing specific creative angles from the Creative Brain",
+    "recommendation 2 with specific avatar + angle + product suggestions",
+    "recommendation 3 with actionable next test to run"
+  ]
+}`;
+}
+
+export interface ReportDataPayload extends InsightDataPayload {
+  campaign_breakdowns: Array<{
+    campaign_name: string;
+    metrics: import("../types").CampaignMetrics;
+    wow_changes: Record<string, number | null> | null;
+  }>;
+}
+
+export function buildReportDataPrompt(payload: ReportDataPayload): string {
+  const symbol = CURRENCY_SYMBOL[payload.currency];
+
+  let prompt = buildDataPrompt(payload);
+
+  prompt += `
+
+## Per-Campaign Breakdowns
+${payload.campaign_breakdowns
+  .map(
+    (c) => `### ${c.campaign_name}
+${formatMetrics(c.metrics, symbol)}${
+      c.wow_changes
+        ? `
+Changes: ${formatChanges(c.wow_changes)}`
+        : ""
+    }`
+  )
+  .join("\n\n")}
+
+## Instructions for This Report
+1. Provide exactly 3 overall insights about the account's performance, using ALL the context documents provided (brand strategy, funnel strategy, KPI benchmarks).
+2. Provide exactly 1 important insight for EACH campaign listed above, referencing specific metrics.
+3. Provide exactly 3 creative recommendations using the Creative Strategy Brain angles. Reference specific angle names (e.g., "Call-Out", "Before/After", "Calm Testimonial") and tie them to specific products, avatars, and funnel stages.
+4. Respond with valid JSON only.`;
+
+  return prompt;
+}
+
 // ── Helpers ──
 
 function formatMetrics(metrics: CampaignMetrics, symbol: string): string {

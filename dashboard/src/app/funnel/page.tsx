@@ -1,26 +1,69 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { FunnelChart } from "@/components/charts/FunnelChart";
+import { PyramidFunnel } from "@/components/charts/PyramidFunnel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
 import { CURRENCY_SYMBOL } from "@/lib/constants";
-import type { FunnelStep } from "@/lib/types";
-
-const DEMO_FUNNEL: FunnelStep[] = [
-  { key: "impressions", label: "Impressions", value: 1850000, previous_value: null, drop_off_percent: null, conversion_from_top: 100 },
-  { key: "clicks", label: "Clicks", value: 42300, previous_value: 1850000, drop_off_percent: 97.71, conversion_from_top: 2.29 },
-  { key: "landing_page_view", label: "Website Views", value: 35200, previous_value: 42300, drop_off_percent: 16.78, conversion_from_top: 1.90 },
-  { key: "add_to_cart", label: "Add to Cart", value: 2150, previous_value: 35200, drop_off_percent: 93.89, conversion_from_top: 0.12 },
-  { key: "checkout_initiated", label: "Checkout", value: 1280, previous_value: 2150, drop_off_percent: 40.47, conversion_from_top: 0.07 },
-  { key: "payment_info_added", label: "Payment Info", value: 980, previous_value: 1280, drop_off_percent: 23.44, conversion_from_top: 0.05 },
-  { key: "purchases", label: "Purchases", value: 385, previous_value: 980, drop_off_percent: 60.71, conversion_from_top: 0.02 },
-];
+import {
+  aggregateMetrics,
+  buildFunnel,
+  getAvailableCWs,
+} from "@/lib/metrics";
+import type { CampaignData, Campaign, FunnelStep } from "@/lib/types";
 
 export default function FunnelPage() {
   const { region, currency } = useRegion();
+  const [data, setData] = useState<CampaignData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Find the biggest drop-off step
-  const biggestDrop = DEMO_FUNNEL.reduce(
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/data/${region.toLowerCase()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d.campaigns);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [region]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48 bg-secondary/30" />
+        <Skeleton className="h-96 rounded-xl bg-secondary/30" />
+      </div>
+    );
+  }
+
+  if (!data || !data.campaigns) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <p className="text-sm">No data available for {region}.</p>
+      </div>
+    );
+  }
+
+  const campaigns: Campaign[] = data.campaigns;
+  const availableCWs = getAvailableCWs(campaigns);
+  const latestCW = availableCWs[availableCWs.length - 1];
+
+  const latestMetrics = aggregateMetrics(
+    campaigns.map((c) => c.weekly_breakdown[latestCW]).filter(Boolean)
+  );
+  const funnel = buildFunnel(latestMetrics);
+
+  const allMetrics = aggregateMetrics(
+    availableCWs.flatMap((cw) =>
+      campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+    )
+  );
+  const allTimeFunnel = buildFunnel(allMetrics);
+
+  const biggestDrop = funnel.reduce(
     (max, step) =>
       step.drop_off_percent !== null &&
       (max === null || step.drop_off_percent > (max.drop_off_percent ?? 0))
@@ -31,81 +74,112 @@ export default function FunnelPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="animate-fade-in">
         <h1 className="text-2xl font-bold tracking-tight">Funnel Analysis</h1>
-        <p className="text-sm text-muted-foreground">
-          Jockey {region} — Full conversion journey ({CURRENCY_SYMBOL[currency]})
+        <p className="text-sm text-muted-foreground/70 font-mono">
+          Jockey {region} &middot; Full conversion journey ({CURRENCY_SYMBOL[currency]})
         </p>
       </div>
 
-      {/* Main Funnel */}
-      <Card className="glass-card border-border/50">
+      {/* Latest Week — Pyramid Funnel (hero visual) */}
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up">
         <CardHeader>
           <CardTitle className="text-base">
-            Full Funnel: Impressions to Purchase
+            Current Week Funnel
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            7 stages with drop-off percentages and conversion rates from top of funnel
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            {latestCW} &middot; 7 stages with drop-off
           </p>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={DEMO_FUNNEL} />
+          <PyramidFunnel steps={funnel} />
         </CardContent>
       </Card>
 
-      {/* Optimization Insights */}
+      {/* Latest Week — Detailed bar breakdown */}
+      <Card className="glass-card border-border/30 animate-fade-slide-up delay-75">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Detailed Breakdown
+          </CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            {latestCW} &middot; Step-by-step metrics
+          </p>
+        </CardHeader>
+        <CardContent>
+          <FunnelChart steps={funnel} />
+        </CardContent>
+      </Card>
+
+      {/* Insights */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="glass-card border-border/50">
+        <Card className="glass-card border-border/30 animate-fade-slide-up delay-150">
           <CardHeader>
-            <CardTitle className="text-sm">
+            <CardTitle className="text-sm text-amber-400/90">
               Highest Optimization Potential
             </CardTitle>
           </CardHeader>
           <CardContent>
             {biggestDrop ? (
               <div className="space-y-2">
-                <p className="text-lg font-bold text-amber-400">
+                <p className="text-xl font-bold text-amber-400 neon-text-emerald" style={{ textShadow: '0 0 7px oklch(0.80 0.17 85 / 40%), 0 0 20px oklch(0.80 0.17 85 / 15%)' }}>
                   {biggestDrop.label}
                 </p>
-                <p className="text-sm text-muted-foreground">
-                  {biggestDrop.drop_off_percent?.toFixed(1)}% shift from previous
-                  step represents the largest optimization opportunity in the funnel.
+                <p className="text-sm text-muted-foreground/70">
+                  <span className="text-amber-400/90 font-mono font-semibold">{biggestDrop.drop_off_percent?.toFixed(1)}%</span> shift from previous
+                  step represents the largest optimization opportunity.
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                No funnel data available
-              </p>
+              <p className="text-sm text-muted-foreground/50">No data</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="glass-card border-border/50">
+        <Card className="glass-card border-primary/10 animate-fade-slide-up delay-225">
           <CardHeader>
             <CardTitle className="text-sm">Overall Conversion Rate</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-primary">
-              {DEMO_FUNNEL[DEMO_FUNNEL.length - 1]?.conversion_from_top?.toFixed(
-                2
-              )}
-              %
+            <p className="text-4xl font-bold text-primary neon-text tabular-nums">
+              {funnel[funnel.length - 1]?.conversion_from_top?.toFixed(2) ?? "N/A"}%
             </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              From impression to purchase
+            <p className="text-sm text-muted-foreground/60 mt-1 font-mono">
+              Impression &rarr; Purchase &middot; {latestCW}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Desktop note */}
-      <p className="text-xs text-muted-foreground text-center md:hidden">
-        For detailed funnel comparison, view on desktop.
-      </p>
+      {/* All-Time — Pyramid Funnel */}
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-300">
+        <CardHeader>
+          <CardTitle className="text-base">
+            All-Time Funnel
+          </CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            Aggregated across {availableCWs.length} weeks
+          </p>
+        </CardHeader>
+        <CardContent>
+          <PyramidFunnel steps={allTimeFunnel} />
+        </CardContent>
+      </Card>
 
-      <p className="text-xs text-muted-foreground text-center">
-        Demo data shown. Connect API credentials for real metrics.
-      </p>
+      {/* All-Time — Detailed bar breakdown */}
+      <Card className="glass-card border-border/30 animate-fade-slide-up delay-375">
+        <CardHeader>
+          <CardTitle className="text-base">
+            All-Time Detailed Breakdown
+          </CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            Aggregated across {availableCWs.length} weeks &middot; Step-by-step metrics
+          </p>
+        </CardHeader>
+        <CardContent>
+          <FunnelChart steps={allTimeFunnel} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

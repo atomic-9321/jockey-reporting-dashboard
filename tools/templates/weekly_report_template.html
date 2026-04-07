@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Performance Report — Paid Media Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0B0B0D;--card:#141417;--border:#222228;--border-active:#3a3a44;--tx:#EEEEF0;--tx2:#B8B8BE;--txm:#7A7B82;--txf:#5A5B63;--txg:#4A4B52;--txd:#333338;--accent:#C8C8FF;--acl:rgba(200,200,255,.08);--acb:rgba(200,200,255,.15);--acd:#A0A0E0;--green:#34d399;--gd:#34d399;--yellow:#fbbf24;--yd:#fbbf24;--slate:#5A5B63;--tof-bg:rgba(59,130,246,.1);--tof-fg:#6db3f8;--tof-bd:rgba(59,130,246,.2);--tof-bar:#5b9df5;--mof-bg:rgba(245,158,11,.1);--mof-fg:#f5b94e;--mof-bd:rgba(245,158,11,.2);--mof-bar:#f5a623;--bof-bg:rgba(236,72,153,.1);--bof-fg:#f083b7;--bof-bd:rgba(236,72,153,.2);--bof-bar:#ec6ba0;--vc:#a78bfa;--sc:#38bdf8;--xbg:#111114;--idbg:#0e0e11;--idbd:#1e1e24}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;padding:20px 16px 48px;-webkit-font-smoothing:antialiased}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.eyebrow{font-size:9.5px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:2.5px;margin-bottom:3px}
+h1{font-size:25px;font-weight:700;letter-spacing:-.8px;margin-bottom:2px}
+.subtitle{font-size:11.5px;color:var(--txf);font-weight:400}
+.region-toggle{display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:var(--card)}
+.region-btn{padding:10px 24px;font-size:12.5px;font-weight:700;cursor:pointer;border:none;background:var(--card);color:var(--txf);transition:all .2s;display:flex;gap:5px;align-items:center;font-family:inherit}
+.region-btn.active{background:var(--accent);color:var(--bg)}
+.region-btn:hover:not(.active){background:var(--idbg)}
+
+/* STORE SECTION */
+.store-section{margin-bottom:18px;animation:fadeUp .35s ease both}
+.store-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px}
+.store-title{font-size:9px;font-weight:700;color:var(--txm);text-transform:uppercase;letter-spacing:1px}
+.store-badge{font-size:9px;font-weight:600;padding:3px 10px;border-radius:5px;background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.store-card{background:var(--card);border-radius:12px;padding:16px 14px;border:1px solid var(--border);position:relative;overflow:hidden}
+.store-card .s-bar{position:absolute;top:0;left:0;right:0;height:2px}
+.store-card .s-label{font-size:9px;font-weight:600;color:var(--txf);letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px}
+.store-card .s-value{font-size:22px;font-weight:700;color:var(--tx);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+.store-card .s-value.large{font-size:26px}
+.store-card .s-sub{font-size:10px;color:var(--txg);margin-top:5px}
+
+/* KPIs */
+.kpi-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.kpi-card{flex:1 1 130px;min-width:118px;background:var(--card);border-radius:12px;padding:18px 15px 14px;border:1px solid var(--border);position:relative;overflow:hidden;animation:fadeUp .4s ease both}
+.kpi-card .ab{position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-label{font-size:9.5px;font-weight:600;color:var(--txf);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px}
+.kpi-value{font-size:24px;font-weight:700;color:var(--tx);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi-sub{font-size:10.5px;color:var(--txg);margin-top:5px}
+
+/* CHARTS */
+.charts-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.chart-card{flex:1 1 300px;background:var(--card);border-radius:12px;border:1px solid var(--border);padding:16px 14px;animation:fadeUp .5s ease both}
+.chart-title{font-size:9px;font-weight:700;color:var(--txf);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.bar-row{display:flex;gap:6px;align-items:center;margin-bottom:7px}
+.bar-label{width:100px;font-size:10.5px;color:var(--txm);flex-shrink:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.bar-track{flex:1;position:relative;height:18px}
+.bar-rev{position:absolute;height:18px;border-radius:4px;background:rgba(200,200,255,.12);transition:width .5s ease}
+.bar-spd{position:absolute;height:18px;border-radius:4px;background:var(--accent);opacity:.35;transition:width .5s ease}
+.bar-roas{font-size:11px;font-weight:700;width:38px;text-align:right;font-variant-numeric:tabular-nums}
+.chart-legend{display:flex;gap:12px;margin-top:10px;justify-content:flex-end;font-size:10px;color:var(--txg)}
+.ld{width:9px;height:7px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:3px}
+.funnel-card{border-radius:8px;padding:11px 13px;margin-bottom:8px}
+.funnel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.funnel-stage{font-size:12px;font-weight:700}
+.funnel-sub{font-size:10px;color:var(--txf);margin-left:5px}
+.funnel-roas{font-size:17px;font-weight:700;color:var(--tx)}
+.funnel-meta{display:flex;gap:10px;font-size:10.5px;color:var(--txm)}
+
+/* SORT BAR */
+.sort-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px}
+.sort-left{display:flex;align-items:center;gap:8px}
+.sort-label{font-size:9px;font-weight:700;color:var(--txm);text-transform:uppercase;letter-spacing:1px}
+.expand-btn{font-size:9.5px;font-weight:600;color:var(--accent);background:var(--acl);border:1px solid var(--acb);border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit}
+.sort-btns{display:flex;gap:3px;flex-wrap:wrap}
+.sort-btn{padding:3px 8px;font-size:9.5px;font-weight:600;border-radius:4px;border:1px solid var(--border);background:var(--card);color:var(--txg);cursor:pointer;font-family:inherit;transition:all .15s}
+.sort-btn.active{border-color:rgba(200,200,255,.3);background:var(--acl);color:var(--accent)}
+
+/* CAMPAIGN CARD */
+.campaign-card{background:var(--card);border-radius:12px;border:1px solid var(--border);margin-bottom:8px;overflow:hidden;transition:all .15s;animation:fadeUp .35s ease both}
+.campaign-card.expanded{border-color:var(--border-active);box-shadow:0 6px 28px rgba(0,0,0,.3)}
+.card-header{padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap;transition:background .15s}
+.card-header:hover{background:rgba(255,255,255,.02)}
+.sd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sd-strong{background:var(--green);box-shadow:0 0 7px rgba(52,211,153,.35)}
+.sd-moderate{background:var(--yellow);box-shadow:0 0 7px rgba(251,191,36,.35)}
+.sd-inactive{background:var(--slate);box-shadow:0 0 7px rgba(90,91,99,.35)}
+.card-info{flex:1 1 160px;min-width:120px}
+.card-name{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px}
+.card-tags{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-block;padding:2px 9px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.8px}
+.ab-wrap{display:flex;align-items:center;gap:5px}
+.ab-track{display:flex;width:44px;height:6px;border-radius:3px;overflow:hidden;background:var(--idbg)}
+.ab-v{background:var(--vc);height:100%}
+.ab-s{background:var(--sc);height:100%}
+.ab-txt{font-size:10px;color:var(--txf);font-variant-numeric:tabular-nums}
+.fv{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.fg{color:var(--green)}.fy{color:var(--yellow)}
+.card-metrics{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.mm{text-align:center;min-width:44px}
+.mm-l{font-size:9px;color:var(--txg);margin-bottom:1px}
+.mm-v{font-size:12px;font-weight:600;color:var(--tx2);font-variant-numeric:tabular-nums}
+.rb-w{display:flex;align-items:center;gap:5px}
+.rb-t{width:44px;height:5px;background:var(--idbg);border-radius:3px;overflow:hidden}
+.rb-f{height:100%;border-radius:3px}
+.rb-v{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;min-width:38px}
+.chev{font-size:14px;color:var(--txg);transition:transform .2s;user-select:none}
+.campaign-card.expanded .chev{transform:rotate(180deg)}
+
+/* EXPANDED DETAIL */
+.card-detail{border-top:1px solid var(--border);background:var(--xbg);animation:slideDown .25s ease}
+.ds{padding:12px 14px}.ds+.ds{padding-top:4px}
+.st{font-size:9px;font-weight:700;color:var(--txm);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.id-sec{background:var(--idbg);border-bottom:1px solid var(--idbd)}
+.id-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px}
+.id-l{font-size:9px;color:var(--txf);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.id-v{font-size:11.5px;color:var(--tx2);font-weight:400;word-break:break-word;line-height:1.4}
+.mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:7px}
+.mt{background:var(--card);border-radius:8px;padding:10px 11px;border:1px solid var(--border);position:relative;overflow:hidden}
+.mt .tb{position:absolute;top:0;left:0;width:3px;height:100%}
+.mt .tl{font-size:9px;color:var(--txf);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;padding-left:6px}
+.mt .tv{font-size:15px;font-weight:700;color:var(--tx);font-variant-numeric:tabular-nums;padding-left:6px}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:7px}
+.cb{background:var(--card);border-radius:8px;padding:12px;border:1px solid var(--border)}
+.cr{display:flex;gap:16px;flex-wrap:wrap}
+.cf-l{font-size:9px;color:var(--txf);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.cf-v{font-size:12px;font-weight:500;color:var(--tx2)}
+.ta-n{font-size:11.5px;font-weight:500;color:var(--tx2);line-height:1.45;word-break:break-word}
+.ib{background:rgba(200,200,255,.05);border-radius:8px;padding:12px 14px;border:1px solid var(--acb)}
+.ib-l{font-size:9px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;display:flex;align-items:center;gap:5px}
+.ib-t{font-size:12.5px;color:var(--tx);line-height:1.55;font-weight:400}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}
+.scard{background:var(--card);border-radius:8px;padding:10px 12px;border:1px solid var(--border)}
+.sh{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+.si{font-size:12px}
+.sty{font-size:9px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px}
+.stx{font-size:11.5px;color:var(--tx2);line-height:1.5}
+
+/* LEGEND */
+.legend-bar{margin-top:16px;padding:12px 14px;background:var(--card);border-radius:12px;border:1px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.lg{display:flex;gap:10px;align-items:center;font-size:10px;color:var(--txf);flex-wrap:wrap}
+.lg-i{display:flex;align-items:center;gap:3px}
+.lg-r{width:9px;height:6px;border-radius:2px;display:inline-block}
+.footer-cols{text-align:center;margin-top:14px;font-size:9px;color:var(--txd);letter-spacing:.2px;line-height:1.6}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:3000px}}
+@media(max-width:640px){h1{font-size:20px}.kpi-value{font-size:20px}.bar-label{width:70px;font-size:9.5px}.card-metrics{gap:8px}.store-card .s-value{font-size:18px}.store-card .s-value.large{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="header"><div><div class="eyebrow">Weekly Performance Report</div><h1>Paid Media Dashboard</h1><div class="subtitle">__SUBTITLE_PLACEHOLDER__</div></div><div class="region-toggle"><button class="region-btn active" data-region="uk" onclick="switchRegion('uk')"><span style="font-size:14px">🇬🇧</span> UK</button><button class="region-btn" data-region="eu" onclick="switchRegion('eu')"><span style="font-size:14px">🇪🇺</span> EU</button></div></div>
+<div id="store-section"></div>
+<div id="kpi-row" class="kpi-row"></div>
+<div class="charts-row"><div id="spend-chart" class="chart-card" style="flex:1 1 320px"></div><div id="funnel-chart" class="chart-card" style="flex:1 1 260px"></div></div>
+<div id="sort-bar" class="sort-bar"></div>
+<div id="campaigns-list"></div>
+<div id="legend-bar" class="legend-bar"></div>
+<div class="footer-cols">All 27 columns across 4 sheets · Store: report_date · account_name · Total Conversions · Total Revenue · Total CPA · Profit · Total ROAS · AOV<br>Campaigns: report_date · account_name · campaign_name · date_range · spend · purchases · purchase_value · roas · cost_per_purchase · avg_order_value · insight · funnel_stage · frequency · ad_format_split · top_performing_ad · next_step_1 · next_step_2 · next_step_3 · next_step_4</div>
+<script>
+const DATA=__DATA_PLACEHOLDER__;
+
+let curReg="uk",curSort="roas",expAll=false,expId=null;
+
+/* ── COLOR LOGIC: Green ≥2x, Yellow <2x, no red ── */
+function gs(r){return r>=2?"strong":r>0?"moderate":"inactive"}
+function rc(r){return r>=2?"var(--gd)":r>0?"var(--yd)":"var(--txd)"}
+function fc(f){return f>=2?"fg":"fy"}
+function fa(f){return f>=2?"var(--green)":"var(--yellow)"}
+function fmt(n,c){return c+n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtI(n,c){return c+Math.round(n).toLocaleString("en-GB")}
+function esc(s){const d=document.createElement("div");d.textContent=s;return d.innerHTML}
+function fst(f){const m={TOF:{bg:"var(--tof-bg)",fg:"var(--tof-fg)",bd:"var(--tof-bd)"},MOF:{bg:"var(--mof-bg)",fg:"var(--mof-fg)",bd:"var(--mof-bd)"},BOF:{bg:"var(--bof-bg)",fg:"var(--bof-fg)",bd:"var(--bof-bd)"}};return m[f]||m.TOF}
+function paf(s){const m=s.match(/(\d+)\s*video\s*\/\s*(\d+)\s*static/i);return m?{v:+m[1],s:+m[2]}:null}
+function csum(c){const a=c.filter(x=>x.spend>0),ts=c.reduce((s,x)=>s+x.spend,0),tp=c.reduce((s,x)=>s+x.purchases,0),tr=c.reduce((s,x)=>s+x.purchaseValue,0);return{totalSpend:ts,totalPurchases:tp,totalRevenue:tr,blendedROAS:ts>0?tr/ts:0,avgCPP:tp>0?ts/tp:0,avgAOV:tp>0?tr/tp:0,avgFreq:a.length>0?a.reduce((s,x)=>s+x.frequency,0)/a.length:0,activeCount:a.length,totalCount:c.length}}
+function ssort(c,by){const s=[...c];const m={roas:(a,b)=>b.roas-a.roas,spend:(a,b)=>b.spend-a.spend,revenue:(a,b)=>b.purchaseValue-a.purchaseValue,purchases:(a,b)=>b.purchases-a.purchases,cpp:(a,b)=>a.costPerPurchase-b.costPerPurchase,aov:(a,b)=>b.avgOrderValue-a.avgOrderValue,frequency:(a,b)=>b.frequency-a.frequency};s.sort(m[by]||m.roas);return s}
+
+/* ── STORE SECTION ── */
+function renderStore(){
+  const d=DATA[curReg],st=d.store,cur=d.currency;
+  let h='<div class="store-section"><div class="store-header"><span class="store-title">📊 Store Data</span><span class="store-badge">Store-Level Metrics</span></div><div class="store-grid">';
+  [{l:"Total Revenue",v:fmtI(st.totalRevenue,cur),s:(cur==="£"?"GBP":"EUR")+" gross revenue",a:"var(--accent)",b:1},
+   {l:"Profit",v:fmtI(st.profit,cur),s:((st.profit/st.totalRevenue)*100).toFixed(1)+"% margin",a:"var(--green)",b:1},
+   {l:"Total Conversions",v:st.totalConversions.toLocaleString("en-GB"),s:fmt(st.totalCPA,cur)+" CPA",a:"var(--vc)"},
+   {l:"Store ROAS",v:st.totalROAS.toFixed(2)+"x",s:st.totalROAS>=2?"Strong performance":"",a:st.totalROAS>=2?"var(--green)":"var(--yellow)"},
+   {l:"Store AOV",v:fmt(st.aov,cur),s:"Average order value",a:"var(--sc)"},
+   {l:"Store CPA",v:fmt(st.totalCPA,cur),s:"Cost per acquisition",a:"var(--txm)"}
+  ].forEach(c=>{h+='<div class="store-card"><div class="s-bar" style="background:'+c.a+'"></div><div class="s-label">'+c.l+'</div><div class="s-value'+(c.b?" large":"")+'">'+c.v+'</div>'+(c.s?'<div class="s-sub">'+c.s+'</div>':'')+'</div>'});
+  h+='</div></div>';
+  document.getElementById("store-section").innerHTML=h;
+}
+
+/* ── KPIs ── */
+function renderKPIs(){const d=DATA[curReg],cur=d.currency,s=csum(d.campaigns),ra=s.blendedROAS>=2?"var(--green)":"var(--yellow)",rs=s.blendedROAS>=2?"Above target":"Below target";document.getElementById("kpi-row").innerHTML=[kpi("Paid Spend",fmtI(s.totalSpend,cur),s.activeCount+" active / "+s.totalCount+" total","var(--accent)"),kpi("Paid Purchases",s.totalPurchases,fmt(s.avgCPP,cur)+" avg CPP","var(--green)"),kpi("Paid Revenue",fmtI(s.totalRevenue,cur),fmt(s.avgAOV,cur)+" avg AOV","var(--yellow)"),kpi("Paid ROAS",s.blendedROAS.toFixed(2)+"x",rs,ra),kpi("Avg Frequency",s.avgFreq.toFixed(2),s.avgFreq>=2.2?"\u26a0 Saturation risk":"Healthy",fa(s.avgFreq))].join("")}
+function kpi(l,v,s,a){return'<div class="kpi-card"><div class="ab" style="background:'+a+'"></div><div class="kpi-label">'+l+'</div><div class="kpi-value">'+v+'</div><div class="kpi-sub">'+s+'</div></div>'}
+
+/* ── CHARTS ── */
+function renderSpendChart(){const d=DATA[curReg],cur=d.currency,a=d.campaigns.filter(c=>c.spend>0).sort((a,b)=>b.purchaseValue-a.purchaseValue),mx=Math.max(...a.map(c=>c.purchaseValue),1);let h='<div class="chart-title">Spend vs Revenue</div>';a.forEach(c=>{h+='<div class="bar-row"><div class="bar-label">'+esc(c.shortName)+'</div><div class="bar-track"><div class="bar-rev" style="width:'+(c.purchaseValue/mx*100).toFixed(1)+'%"></div><div class="bar-spd" style="width:'+(c.spend/mx*100).toFixed(1)+'%"></div></div><div class="bar-roas" style="color:'+rc(c.roas)+'">'+c.roas+'x</div></div>'});h+='<div class="chart-legend"><span><span class="ld" style="background:var(--accent);opacity:.65"></span> Spend</span><span><span class="ld" style="background:#e0e7ff"></span> Revenue</span></div>';document.getElementById("spend-chart").innerHTML=h}
+
+function renderFunnelChart(){const d=DATA[curReg],cur=d.currency,fn={};d.campaigns.filter(c=>c.spend>0).forEach(c=>{if(!fn[c.funnelStage])fn[c.funnelStage]={sp:0,rv:0,p:0,n:0};fn[c.funnelStage].sp+=c.spend;fn[c.funnelStage].rv+=c.purchaseValue;fn[c.funnelStage].p+=c.purchases;fn[c.funnelStage].n++});const ord=["TOF","MOF","BOF"],clr={TOF:"var(--tof-bar)",MOF:"var(--mof-bar)",BOF:"var(--bof-bar)"},lbl={TOF:"Top of Funnel",MOF:"Mid Funnel",BOF:"Bottom Funnel"};let h='<div class="chart-title">Funnel Breakdown</div>';ord.filter(f=>fn[f]).forEach(f=>{const x=fn[f],r=x.sp>0?(x.rv/x.sp).toFixed(2):"0.00";h+='<div class="funnel-card" style="background:color-mix(in srgb,'+clr[f]+' 6%,white);border:1px solid color-mix(in srgb,'+clr[f]+' 18%,white)"><div class="funnel-header"><div><span class="funnel-stage" style="color:'+clr[f]+'">'+f+'</span><span class="funnel-sub">'+lbl[f]+'</span></div><span class="funnel-roas">'+r+'x</span></div><div class="funnel-meta"><span>'+cur+Math.round(x.sp)+' spend</span><span>'+x.p+' purchases</span><span>'+x.n+' campaign'+(x.n>1?"s":"")+'</span></div></div>'});document.getElementById("funnel-chart").innerHTML=h}
+
+/* ── SORT BAR ── */
+function renderSortBar(){const d=DATA[curReg],sorts=[{k:"roas",l:"ROAS"},{k:"spend",l:"Spend"},{k:"revenue",l:"Revenue"},{k:"purchases",l:"Purch."},{k:"cpp",l:"CPP"},{k:"aov",l:"AOV"},{k:"frequency",l:"Freq."}];let h='<div class="sort-left"><span class="sort-label">Campaigns ('+d.campaigns.length+')</span><button class="expand-btn" onclick="toggleExp()">'+(expAll?"Collapse All":"Expand All")+'</button></div><div class="sort-btns">';sorts.forEach(s=>{h+='<button class="sort-btn '+(curSort===s.k?"active":"")+'" onclick="chSort(\''+s.k+'\')">'+s.l+'</button>'});h+='</div>';document.getElementById("sort-bar").innerHTML=h}
+
+/* ── CAMPAIGNS ── */
+function renderCampaigns(){const d=DATA[curReg],cur=d.currency,sorted=ssort(d.campaigns,curSort);let h="";sorted.forEach((c,idx)=>{const st=c.spend===0?"inactive":gs(c.roas),isE=expAll||expId===c.id,f=fst(c.funnelStage),af=paf(c.adFormatSplit);const afH=af?(()=>{const t=af.v+af.s||1;return'<div class="ab-wrap"><div class="ab-track">'+(af.v>0?'<div class="ab-v" style="width:'+af.v/t*100+'%"></div>':'')+(af.s>0?'<div class="ab-s" style="width:'+af.s/t*100+'%"></div>':'')+'</div><span class="ab-txt">'+af.v+'V\u00b7'+af.s+'S</span></div>'})():'<span class="ab-txt">'+esc(c.adFormatSplit)+'</span>';const rp=Math.min(c.roas/5*100,100),share=d.totalSpendRef>0?((c.spend/d.totalSpendRef)*100).toFixed(1):"0.0";
+h+='<div class="campaign-card '+(isE?"expanded":"")+'" style="animation-delay:'+idx*.04+'s" id="card-'+c.id+'">';
+h+='<div class="card-header" onclick="toggleCard('+c.id+')"><span class="sd sd-'+st+'"></span><div class="card-info"><div class="card-name">'+esc(c.shortName)+'</div><div class="card-tags"><span class="pill" style="background:'+f.bg+';color:'+f.fg+';border:1px solid '+f.bd+'">'+c.funnelStage+'</span>'+afH+'<span class="fv '+fc(c.frequency)+'">'+c.frequency.toFixed(2)+'</span></div></div><div class="card-metrics">';
+[{l:"Spend",v:cur+Math.round(c.spend)},{l:"Purch.",v:c.purchases},{l:"Revenue",v:cur+Math.round(c.purchaseValue)},{l:"CPP",v:cur+c.costPerPurchase.toFixed(0)},{l:"AOV",v:cur+c.avgOrderValue.toFixed(0)}].forEach(m=>{h+='<div class="mm"><div class="mm-l">'+m.l+'</div><div class="mm-v">'+m.v+'</div></div>'});
+h+='<div class="rb-w"><div class="rb-t"><div class="rb-f" style="width:'+rp+'%;background:'+rc(c.roas)+'"></div></div><span class="rb-v" style="color:'+rc(c.roas)+'">'+c.roas.toFixed(2)+'x</span></div><span class="chev">\u25be</span></div></div>';
+if(isE){h+='<div class="card-detail"><div class="ds id-sec"><div class="st">Campaign Identity</div><div class="id-grid">';
+[{l:"Full Campaign Name",v:c.campaignName},{l:"Account Name",v:c.accountName},{l:"Report Date",v:c.reportDate},{l:"Date Range",v:c.dateRange}].forEach(i=>{h+='<div><div class="id-l">'+i.l+'</div><div class="id-v">'+esc(i.v)+'</div></div>'});
+h+='</div></div><div class="ds"><div class="st">Performance Metrics</div><div class="mg">';
+[{l:"Spend",v:fmt(c.spend,cur),a:"var(--accent)"},{l:"Purchases",v:c.purchases,a:"var(--green)"},{l:"Purchase Value",v:fmt(c.purchaseValue,cur),a:"var(--yellow)"},{l:"ROAS",v:c.roas.toFixed(2)+"x",a:rc(c.roas)},{l:"Cost / Purchase",v:fmt(c.costPerPurchase,cur),a:"var(--vc)"},{l:"Avg Order Value",v:fmt(c.avgOrderValue,cur),a:"var(--sc)"},{l:"Frequency",v:c.frequency.toFixed(2),a:fa(c.frequency)},{l:"Spend Share",v:share+"%",a:"var(--txm)"}].forEach(m=>{h+='<div class="mt"><div class="tb" style="background:'+m.a+'"></div><div class="tl">'+m.l+'</div><div class="tv">'+m.v+'</div></div>'});
+h+='</div></div><div class="ds"><div class="st">Creative & Targeting</div><div class="cg"><div class="cb"><div class="cr"><div><div class="cf-l">Funnel Stage</div><span class="pill" style="background:'+f.bg+';color:'+f.fg+';border:1px solid '+f.bd+'">'+c.funnelStage+'</span></div><div><div class="cf-l">Ad Format Split</div><div class="cf-v">'+esc(c.adFormatSplit)+'</div></div><div><div class="cf-l">Frequency</div><span class="fv '+fc(c.frequency)+'">'+c.frequency.toFixed(2)+'</span></div></div></div><div class="cb"><div class="cf-l" style="margin-bottom:4px">Top Performing Ad</div><div class="ta-n">'+esc(c.topPerformingAd)+'</div></div></div></div>';
+h+='<div class="ds"><div class="ib"><div class="ib-l"><span>\ud83d\udca1</span> AI Insight</div><div class="ib-t">'+esc(c.insight)+'</div></div></div>';
+var steps=[{s:c.nextStep1,i:"\ud83c\udfaf",l:"Priority Action"},{s:c.nextStep2,i:"\u26a1",l:"Quick Win"},{s:c.nextStep3,i:"\ud83d\udd04",l:"Optimization"},{s:c.nextStep4,i:"\ud83d\udcc8",l:"Growth Lever"}];
+h+='<div class="ds" style="padding-bottom:16px"><div class="st">Recommended Next Steps</div><div class="sg">';
+steps.forEach(x=>{h+='<div class="scard"><div class="sh"><span class="si">'+x.i+'</span><span class="sty">'+x.l+'</span></div><div class="stx">'+esc(x.s)+'</div></div>'});
+h+='</div></div></div>'}h+='</div>'});document.getElementById("campaigns-list").innerHTML=h}
+
+/* ── LEGEND ── */
+function renderLegend(){let h='<div class="lg">';["TOF","MOF","BOF"].forEach(f=>{const c=fst(f);h+='<span class="pill" style="background:'+c.bg+';color:'+c.fg+';border:1px solid '+c.bd+'">'+f+'</span>'});h+='<span class="lg-i"><span class="lg-r" style="background:var(--vc)"></span> Video</span><span class="lg-i"><span class="lg-r" style="background:var(--sc)"></span> Static</span></div>';document.getElementById("legend-bar").innerHTML=h}
+
+/* ── RENDER ── */
+function renderAll(){renderStore();renderKPIs();renderSpendChart();renderFunnelChart();renderSortBar();renderCampaigns();renderLegend()}
+function switchRegion(r){curReg=r;expId=null;expAll=false;document.querySelectorAll(".region-btn").forEach(b=>b.classList.toggle("active",b.dataset.region===r));renderAll()}
+function chSort(s){curSort=s;renderSortBar();renderCampaigns()}
+function toggleCard(id){if(expAll)return;expId=expId===id?null:id;renderCampaigns()}
+function toggleExp(){expAll=!expAll;expId=null;renderSortBar();renderCampaigns()}
+renderAll();
+</script>
+</body>
+</html>

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { WeekSelector } from "@/components/reports/WeekSelector";
-import { TopAdsSection } from "@/components/reports/TopAdsSection";
 import { MetricsTable } from "@/components/reports/MetricsTable";
-import { FunnelChart } from "@/components/charts/FunnelChart";
+import { ReportInsights } from "@/components/reports/ReportInsights";
+import { PyramidFunnel } from "@/components/charts/PyramidFunnel";
 import { KPICard } from "@/components/charts/KPICard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
 import {
   formatCurrency,
@@ -14,98 +15,152 @@ import {
   formatPercent,
   CURRENCY_SYMBOL,
 } from "@/lib/constants";
-import type { FunnelStep, TopAd, CampaignMetrics } from "@/lib/types";
-
-// Demo data — replaced by real data when API is connected
-const DEMO_WEEKS = [
-  "2026-CW10", "2026-CW11", "2026-CW12", "2026-CW13", "2026-CW14",
-];
-
-const DEMO_METRICS: CampaignMetrics = {
-  spend: 3200, impressions: 450000, clicks: 10500, ctr: 2.33,
-  purchases: 95, purchase_value: 7125, roas: 2.23, cpa: 33.68,
-  add_to_cart: 540, checkout_initiated: 320, payment_info_added: 245,
-  content_view: 17000, landing_page_view: 8800, reach: 300000,
-};
-
-const DEMO_FUNNEL: FunnelStep[] = [
-  { key: "impressions", label: "Impressions", value: 450000, previous_value: null, drop_off_percent: null, conversion_from_top: 100 },
-  { key: "clicks", label: "Clicks", value: 10500, previous_value: 450000, drop_off_percent: 97.67, conversion_from_top: 2.33 },
-  { key: "landing_page_view", label: "Website Views", value: 8800, previous_value: 10500, drop_off_percent: 16.19, conversion_from_top: 1.96 },
-  { key: "add_to_cart", label: "Add to Cart", value: 540, previous_value: 8800, drop_off_percent: 93.86, conversion_from_top: 0.12 },
-  { key: "checkout_initiated", label: "Checkout", value: 320, previous_value: 540, drop_off_percent: 40.74, conversion_from_top: 0.07 },
-  { key: "payment_info_added", label: "Payment Info", value: 245, previous_value: 320, drop_off_percent: 23.44, conversion_from_top: 0.05 },
-  { key: "purchases", label: "Purchases", value: 95, previous_value: 245, drop_off_percent: 61.22, conversion_from_top: 0.02 },
-];
-
-const DEMO_CAMPAIGNS = [
-  { name: "Jockey Spring Collection - TOF", metrics: { ...DEMO_METRICS, spend: 1200, purchases: 35, roas: 2.5 } as CampaignMetrics },
-  { name: "Retargeting - BOF", metrics: { ...DEMO_METRICS, spend: 800, purchases: 42, roas: 4.1 } as CampaignMetrics },
-  { name: "New Arrivals - MOF", metrics: { ...DEMO_METRICS, spend: 1200, purchases: 18, roas: 1.2 } as CampaignMetrics },
-];
+import {
+  aggregateMetrics,
+  buildFunnel,
+  getAvailableCWs,
+  computeWoWChange,
+} from "@/lib/metrics";
+import type { CampaignData, Campaign } from "@/lib/types";
 
 export default function WeeklyReportPage() {
   const { region, currency } = useRegion();
-  const [selectedWeek, setSelectedWeek] = useState(DEMO_WEEKS[DEMO_WEEKS.length - 1]);
+  const [data, setData] = useState<CampaignData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/data/${region.toLowerCase()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d.campaigns);
+        const cws = getAvailableCWs(d.campaigns?.campaigns || []);
+        setSelectedWeek(cws[cws.length - 1] || null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [region]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48 bg-secondary/30" />
+        <div className="flex gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-24 bg-secondary/30" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl bg-secondary/30" />
+          ))}
+        </div>
+        <Skeleton className="h-64 rounded-xl bg-secondary/30" />
+      </div>
+    );
+  }
+
+  if (!data || !data.campaigns || data.campaigns.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <p className="text-sm">No campaign data available for {region}.</p>
+      </div>
+    );
+  }
+
+  const campaigns: Campaign[] = data.campaigns;
+  const availableCWs = getAvailableCWs(campaigns);
+
+  if (!selectedWeek) return null;
+
+  const weekIdx = availableCWs.indexOf(selectedWeek);
+  const previousCW = weekIdx > 0 ? availableCWs[weekIdx - 1] : null;
+
+  const weekMetrics = aggregateMetrics(
+    campaigns.map((c) => c.weekly_breakdown[selectedWeek]).filter(Boolean)
+  );
+
+  const prevMetrics = previousCW
+    ? aggregateMetrics(
+        campaigns.map((c) => c.weekly_breakdown[previousCW]).filter(Boolean)
+      )
+    : null;
+
+  const wowChanges = prevMetrics ? computeWoWChange(weekMetrics, prevMetrics) : null;
+  const funnel = buildFunnel(weekMetrics);
+
+  const campaignRows = campaigns
+    .map((c) => ({
+      name: c.campaign_name,
+      metrics: c.weekly_breakdown[selectedWeek] || {
+        spend: null, impressions: null, clicks: null, ctr: null,
+        purchases: null, purchase_value: null, roas: null, cpa: null,
+        add_to_cart: null, checkout_initiated: null, payment_info_added: null,
+        content_view: null, landing_page_view: null, reach: null,
+      },
+    }))
+    .filter((c) => c.metrics.spend !== null && c.metrics.spend > 0)
+    .sort((a, b) => (b.metrics.spend ?? 0) - (a.metrics.spend ?? 0));
 
   return (
     <div className="space-y-6">
-      <div>
+      {/* Page header */}
+      <div className="animate-fade-in">
         <h1 className="text-2xl font-bold tracking-tight">Weekly Report</h1>
-        <p className="text-sm text-muted-foreground">
-          Jockey {region} — Performance by calendar week ({CURRENCY_SYMBOL[currency]})
+        <p className="text-sm text-muted-foreground/70 font-mono">
+          Jockey {region} &middot; Performance by calendar week ({CURRENCY_SYMBOL[currency]})
         </p>
       </div>
 
       {/* Week Selector */}
       <WeekSelector
-        weeks={DEMO_WEEKS}
+        weeks={availableCWs}
         selected={selectedWeek}
         onSelect={setSelectedWeek}
       />
 
-      {/* KPIs for selected week */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KPICard label="Investment" value={formatCurrency(DEMO_METRICS.spend, currency)} />
-        <KPICard label="Revenue" value={formatCurrency(DEMO_METRICS.purchase_value, currency)} />
-        <KPICard label="Ad ROAS" value={DEMO_METRICS.roas ? `${DEMO_METRICS.roas}x` : "N/A"} />
-        <KPICard label="Purchases" value={formatNumber(DEMO_METRICS.purchases)} />
-        <KPICard label="CPA" value={formatCurrency(DEMO_METRICS.cpa, currency)} />
-        <KPICard label="CTR" value={formatPercent(DEMO_METRICS.ctr)} />
+        <KPICard label="Investment" value={formatCurrency(weekMetrics.spend, currency)} trend={wowChanges?.spend ?? null} color="indigo" delay={0} />
+        <KPICard label="Revenue" value={formatCurrency(weekMetrics.purchase_value, currency)} trend={wowChanges?.purchase_value ?? null} color="emerald" delay={75} />
+        <KPICard label="Ad ROAS" value={weekMetrics.roas !== null ? `${weekMetrics.roas}x` : "N/A"} trend={wowChanges?.roas ?? null} color="cyan" delay={150} />
+        <KPICard label="Purchases" value={formatNumber(weekMetrics.purchases)} trend={wowChanges?.purchases ?? null} color="amber" delay={225} />
+        <KPICard label="CPA" value={formatCurrency(weekMetrics.cpa, currency)} trend={wowChanges?.cpa ?? null} color="rose" delay={300} />
+        <KPICard label="CTR" value={formatPercent(weekMetrics.ctr)} color="violet" delay={375} />
       </div>
 
       {/* Funnel */}
-      <Card className="glass-card border-border/50">
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-300">
         <CardHeader>
-          <CardTitle className="text-base">Conversion Funnel — {selectedWeek}</CardTitle>
+          <CardTitle className="text-base">Conversion Funnel</CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">{selectedWeek}</p>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={DEMO_FUNNEL} />
+          <PyramidFunnel steps={funnel} />
         </CardContent>
       </Card>
-
-      {/* Top 3 Ads */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Top Performing Ads</h2>
-        <p className="text-xs text-muted-foreground mb-4">
-          Ranked by purchases (min {CURRENCY_SYMBOL[currency]}50 investment threshold)
-        </p>
-        <TopAdsSection ads={[]} currency={currency} />
-      </div>
 
       {/* Campaign Table */}
-      <Card className="glass-card border-border/50">
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-375">
         <CardHeader>
           <CardTitle className="text-base">Campaign Breakdown</CardTitle>
+          <p className="text-xs text-muted-foreground/60 font-mono">
+            {campaignRows.length} campaigns &middot; {selectedWeek}
+          </p>
         </CardHeader>
         <CardContent>
-          <MetricsTable campaigns={DEMO_CAMPAIGNS} currency={currency} />
+          <MetricsTable campaigns={campaignRows} currency={currency} />
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground text-center">
-        Demo data shown. Connect API credentials for real metrics.
-      </p>
+      {/* AI Insights + Creative Recommendations */}
+      <ReportInsights
+        region={region}
+        period={selectedWeek}
+        periodType="weekly"
+        campaignNames={campaignRows.map((c) => c.name)}
+      />
     </div>
   );
 }

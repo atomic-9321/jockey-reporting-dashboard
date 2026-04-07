@@ -1,134 +1,215 @@
 "use client";
 
+import { useEffect, useState, useMemo } from "react";
 import { useRegion } from "@/hooks/useRegion";
 import { KPICard } from "@/components/charts/KPICard";
-import { FunnelChart } from "@/components/charts/FunnelChart";
+import { PyramidFunnel } from "@/components/charts/PyramidFunnel";
+import { DateRangePicker, type DateRange } from "@/components/ui/date-range-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatCurrency,
   formatNumber,
   formatPercent,
-  CURRENCY_MAP,
   CURRENCY_SYMBOL,
 } from "@/lib/constants";
-import type { CampaignMetrics, FunnelStep } from "@/lib/types";
-
-// Demo data — will be replaced with real data from API
-function getDemoMetrics(): CampaignMetrics {
-  return {
-    spend: 12450.0,
-    impressions: 1850000,
-    clicks: 42300,
-    ctr: 2.29,
-    purchases: 385,
-    purchase_value: 28750.0,
-    roas: 2.31,
-    cpa: 32.34,
-    add_to_cart: 2150,
-    checkout_initiated: 1280,
-    payment_info_added: 980,
-    content_view: 68500,
-    landing_page_view: 35200,
-    reach: 1200000,
-  };
-}
-
-function getDemoFunnel(): FunnelStep[] {
-  return [
-    { key: "impressions", label: "Impressions", value: 1850000, previous_value: null, drop_off_percent: null, conversion_from_top: 100 },
-    { key: "clicks", label: "Clicks", value: 42300, previous_value: 1850000, drop_off_percent: 97.71, conversion_from_top: 2.29 },
-    { key: "landing_page_view", label: "Website Views", value: 35200, previous_value: 42300, drop_off_percent: 16.78, conversion_from_top: 1.90 },
-    { key: "add_to_cart", label: "Add to Cart", value: 2150, previous_value: 35200, drop_off_percent: 93.89, conversion_from_top: 0.12 },
-    { key: "checkout_initiated", label: "Checkout", value: 1280, previous_value: 2150, drop_off_percent: 40.47, conversion_from_top: 0.07 },
-    { key: "payment_info_added", label: "Payment Info", value: 980, previous_value: 1280, drop_off_percent: 23.44, conversion_from_top: 0.05 },
-    { key: "purchases", label: "Purchases", value: 385, previous_value: 980, drop_off_percent: 60.71, conversion_from_top: 0.02 },
-  ];
-}
-
-function getDemoSparkline(): Array<{ value: number }> {
-  return [
-    { value: 2800 },
-    { value: 3200 },
-    { value: 2950 },
-    { value: 3500 },
-  ];
-}
+import {
+  aggregateMetrics,
+  buildFunnel,
+  getAvailableCWs,
+  computeWoWChange,
+  cwKeysForDateRange,
+} from "@/lib/metrics";
+import type { CampaignData } from "@/lib/types";
 
 export function OverviewContent() {
   const { region, currency } = useRegion();
-  const metrics = getDemoMetrics();
-  const funnel = getDemoFunnel();
-  const sparkline = getDemoSparkline();
+  const [data, setData] = useState<CampaignData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/data/${region.toLowerCase()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d.campaigns);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [region]);
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-xl bg-secondary/30" />
+          ))}
+        </div>
+        <Skeleton className="h-72 rounded-xl bg-secondary/30" />
+      </div>
+    );
+  }
+
+  if (!data || !data.campaigns || data.campaigns.length === 0) {
+    return (
+      <div className="text-center py-20 text-muted-foreground">
+        <p className="text-sm">No campaign data available for {region}.</p>
+        <p className="text-xs mt-1 text-muted-foreground/60">Run the data refresh to pull from Meta API.</p>
+      </div>
+    );
+  }
+
+  const campaigns = data.campaigns;
+  const availableCWs = getAvailableCWs(campaigns);
+
+  // Compute selected CW keys based on date range
+  const selectedCWKeys = dateRange
+    ? cwKeysForDateRange(availableCWs, dateRange.startDate, dateRange.endDate)
+    : [availableCWs[availableCWs.length - 1]]; // default to latest week
+
+  // For comparison: compute a prior period of the same length
+  const selectedIdx = selectedCWKeys.map((cw) => availableCWs.indexOf(cw)).filter((i) => i >= 0);
+  const periodLength = selectedCWKeys.length;
+  const minIdx = Math.min(...selectedIdx);
+  const previousCWKeys =
+    minIdx >= periodLength
+      ? availableCWs.slice(minIdx - periodLength, minIdx)
+      : null;
+
+  const selectedMetrics = aggregateMetrics(
+    selectedCWKeys.flatMap((cw) =>
+      campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+    )
+  );
+
+  const previousMetrics = previousCWKeys
+    ? aggregateMetrics(
+        previousCWKeys.flatMap((cw) =>
+          campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+        )
+      )
+    : null;
+
+  const wowChanges = previousMetrics ? computeWoWChange(selectedMetrics, previousMetrics) : null;
+  const funnel = buildFunnel(selectedMetrics);
+
+  // Sparklines: always show last 6 available weeks
+  const recentCWs = availableCWs.slice(-6);
+
+  function buildSparkline(key: "spend" | "purchase_value" | "purchases" | "impressions" | "roas" | "cpa") {
+    return recentCWs.map((cw) => {
+      const agg = aggregateMetrics(
+        campaigns.map((c) => c.weekly_breakdown[cw]).filter(Boolean)
+      );
+      return { value: agg[key] ?? 0 };
+    });
+  }
+
+  const periodLabel = dateRange
+    ? `${selectedCWKeys.length} weeks selected`
+    : availableCWs[availableCWs.length - 1];
 
   return (
-    <div className="space-y-6">
-      {/* Region indicator */}
-      <div className="flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-        <span className="text-sm font-medium text-muted-foreground">
-          Showing data for Jockey {region} ({CURRENCY_SYMBOL[currency]})
-        </span>
+    <div className="space-y-8">
+      {/* Region indicator + Date Range */}
+      <div className="flex items-center justify-between animate-fade-in flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/5 border border-primary/10 backdrop-blur-sm">
+            <div className="h-2 w-2 rounded-full bg-primary data-dot shadow-[0_0_6px_oklch(0.78_0.17_195_/_40%)]" />
+            <span className="text-sm font-medium text-foreground/80">
+              Jockey {region}
+            </span>
+            <span className="text-xs text-muted-foreground/60 font-mono">
+              {CURRENCY_SYMBOL[currency]}
+            </span>
+          </div>
+          <span className="text-xs text-muted-foreground/50 font-mono">
+            {periodLabel} &middot; {availableCWs.length}w
+          </span>
+        </div>
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
         <KPICard
           label="Ad Investment"
-          value={formatCurrency(metrics.spend, currency)}
-          trend={8.5}
-          sparklineData={sparkline}
+          value={formatCurrency(selectedMetrics.spend, currency)}
+          trend={wowChanges?.spend ?? null}
+          sparklineData={buildSparkline("spend")}
+          color="indigo"
+          delay={0}
         />
         <KPICard
           label="Ad Revenue"
-          value={formatCurrency(metrics.purchase_value, currency)}
-          trend={12.3}
-          sparklineData={sparkline}
+          value={formatCurrency(selectedMetrics.purchase_value, currency)}
+          trend={wowChanges?.purchase_value ?? null}
+          sparklineData={buildSparkline("purchase_value")}
+          color="emerald"
+          delay={75}
         />
         <KPICard
           label="Ad ROAS"
-          value={metrics.roas !== null ? `${metrics.roas}x` : "N/A"}
-          trend={3.5}
-          sparklineData={sparkline}
+          value={selectedMetrics.roas !== null ? `${selectedMetrics.roas}x` : "N/A"}
+          trend={wowChanges?.roas ?? null}
+          sparklineData={buildSparkline("roas")}
+          color="cyan"
+          delay={150}
         />
         <KPICard
           label="Ad Purchases"
-          value={formatNumber(metrics.purchases)}
-          trend={15.2}
-          sparklineData={sparkline}
+          value={formatNumber(selectedMetrics.purchases)}
+          trend={wowChanges?.purchases ?? null}
+          sparklineData={buildSparkline("purchases")}
+          color="amber"
+          delay={225}
         />
         <KPICard
           label="CPA"
-          value={formatCurrency(metrics.cpa, currency)}
-          trend={-5.1}
+          value={formatCurrency(selectedMetrics.cpa, currency)}
+          trend={wowChanges?.cpa ?? null}
+          sparklineData={buildSparkline("cpa")}
+          color="rose"
+          delay={300}
         />
         <KPICard
           label="Impressions"
-          value={formatNumber(metrics.impressions)}
-          trend={2.8}
-          sparklineData={sparkline}
+          value={formatNumber(selectedMetrics.impressions)}
+          trend={wowChanges?.impressions ?? null}
+          sparklineData={buildSparkline("impressions")}
+          color="violet"
+          delay={375}
         />
       </div>
 
-      {/* Funnel */}
-      <Card className="glass-card border-border/50">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">
-            Conversion Funnel
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Full journey from impression to purchase
-          </p>
+      {/* Funnel — PyramidFunnel */}
+      <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-300">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-semibold">
+                Conversion Funnel
+              </CardTitle>
+              <p className="text-xs text-muted-foreground/70 mt-0.5 font-mono">
+                Impression &rarr; Purchase &middot; {periodLabel}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-bold text-primary neon-text tabular-nums">
+                {funnel[funnel.length - 1]?.conversion_from_top?.toFixed(2) ?? "\u2014"}%
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+                conversion
+              </p>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={funnel} />
+          <PyramidFunnel steps={funnel} />
         </CardContent>
       </Card>
-
-      {/* Data notice */}
-      <p className="text-xs text-muted-foreground text-center">
-        Connect your Meta API credentials and Google Sheets to see real data.
-        Currently showing demo values.
-      </p>
     </div>
   );
 }

@@ -1,5 +1,22 @@
 import type { Region, Currency } from "./types";
 
+// ── CW to Month (ISO-correct) ──
+
+export function cwKeyToMonth(cwKey: string): string {
+  const [yearStr, cwStr] = cwKey.split("-CW");
+  const year = parseInt(yearStr, 10);
+  const cw = parseInt(cwStr, 10);
+  // ISO: week 1 contains Jan 4. Find Monday of that week, then offset.
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+  const week1Monday = new Date(jan4.getTime() - (dayOfWeek - 1) * 86400000);
+  const targetMonday = new Date(week1Monday.getTime() + (cw - 1) * 7 * 86400000);
+  // Use Thursday of the ISO week to determine which month the week belongs to
+  const thursday = new Date(targetMonday.getTime() + 3 * 86400000);
+  const m = thursday.getMonth() + 1;
+  return `${thursday.getFullYear()}-${String(m).padStart(2, "0")}`;
+}
+
 // ── Currency ──
 
 export const CURRENCY_MAP: Record<Region, Currency> = {
@@ -119,7 +136,7 @@ export const MIN_SPEND_THRESHOLD = 50; // In the account's currency
 
 export const FUNNEL_STEPS = [
   { key: "impressions", label: "Impressions" },
-  { key: "clicks", label: "Clicks" },
+  { key: "clicks", label: "Unique Link Clicks" },
   { key: "landing_page_view", label: "Website Views" },
   { key: "add_to_cart", label: "Add to Cart" },
   { key: "checkout_initiated", label: "Checkout" },

@@ -14,7 +14,7 @@ import type {
   TopAd,
   AnomalyFlag,
 } from "./types";
-import { FUNNEL_STEPS, MIN_SPEND_THRESHOLD, TOP_ADS_COUNT } from "./constants";
+import { FUNNEL_STEPS, MIN_SPEND_THRESHOLD, TOP_ADS_COUNT, cwKeyToMonth } from "./constants";
 
 // ── Null-safe arithmetic ──
 
@@ -135,19 +135,13 @@ export function aggregateCampaignsByMonth(
   year: number,
   month: number
 ): CampaignMetrics {
-  const cwPrefix = `${year}-CW`;
+  const targetMonth = `${year}-${String(month).padStart(2, "0")}`;
   const allWeekMetrics: CampaignMetrics[] = [];
 
   for (const campaign of campaigns) {
     for (const [key, metrics] of Object.entries(campaign.weekly_breakdown)) {
-      // Check if this CW falls in the target month
-      if (key.startsWith(cwPrefix)) {
-        const cwNum = parseInt(key.split("CW")[1], 10);
-        // Approximate: CW1-4 = Jan, CW5-8 = Feb, etc.
-        const approxMonth = Math.ceil(cwNum / 4.345);
-        if (Math.round(approxMonth) === month) {
-          allWeekMetrics.push(metrics);
-        }
+      if (cwKeyToMonth(key) === targetMonth) {
+        allWeekMetrics.push(metrics);
       }
     }
   }
@@ -314,6 +308,36 @@ export function flagAnomalies(
   return flags;
 }
 
+// ── Date Range to CW Keys ──
+
+export function cwKeyToDateRange(cwKey: string): { start: Date; end: Date } {
+  const [yearStr, cwStr] = cwKey.split("-CW");
+  const year = parseInt(yearStr, 10);
+  const cw = parseInt(cwStr, 10);
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7;
+  const week1Monday = new Date(jan4.getTime() - (dayOfWeek - 1) * 86400000);
+  const targetMonday = new Date(
+    week1Monday.getTime() + (cw - 1) * 7 * 86400000
+  );
+  const targetSunday = new Date(targetMonday.getTime() + 6 * 86400000);
+  return { start: targetMonday, end: targetSunday };
+}
+
+export function cwKeysForDateRange(
+  allCWs: string[],
+  startDate: Date,
+  endDate: Date
+): string[] {
+  const start = startDate.getTime();
+  const end = endDate.getTime();
+  return allCWs.filter((cw) => {
+    const range = cwKeyToDateRange(cw);
+    // CW overlaps if its end is >= start AND its start is <= end
+    return range.end.getTime() >= start && range.start.getTime() <= end;
+  });
+}
+
 // ── Available Calendar Weeks ──
 
 export function getAvailableCWs(campaigns: Campaign[]): string[] {
@@ -331,11 +355,7 @@ export function getAvailableMonths(cws: string[]): string[] {
   // This is approximate but sufficient for navigation
   const months = new Set<string>();
   for (const cw of cws) {
-    const year = cw.split("-CW")[0];
-    const cwNum = parseInt(cw.split("CW")[1], 10);
-    const month = Math.ceil(cwNum / 4.345);
-    const monthStr = `${year}-${String(Math.round(month)).padStart(2, "0")}`;
-    months.add(monthStr);
+    months.add(cwKeyToMonth(cw));
   }
   return Array.from(months).sort();
 }

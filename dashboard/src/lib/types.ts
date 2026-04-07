@@ -158,6 +158,18 @@ export interface InsightResult {
   period: string;
 }
 
+// ── Report Insights (extended) ──
+
+export interface ReportInsightResult {
+  overall_insights: string[];
+  campaign_insights: Record<string, string>;
+  creative_recommendations: string[];
+  generated_at: string;
+  prompt_version: string;
+  region: Region;
+  period: string;
+}
+
 // ── Refresh Status ──
 
 export interface SourceStatus {
@@ -191,6 +203,38 @@ export interface TopAd extends Ad {
   ranking_metric: string;
   ranking_value: number;
   period_metrics: AdMetrics;
+}
+
+// ── Ad Insights Breakdowns ──
+
+export interface AdAgeGenderBreakdown {
+  age: string;
+  gender: "male" | "female" | "unknown";
+  spend: number;
+  impressions: number;
+  purchases: number;
+  roas: number | null;
+}
+
+export interface AdPlacementBreakdown {
+  platform: string;
+  position: string;
+  label: string;
+  spend: number;
+  impressions: number;
+  roas: number | null;
+}
+
+export interface AdVideoRetention {
+  duration_seconds: number | null;
+  curve: Array<{ pct_index: number; retention: number }>;
+}
+
+export interface AdInsightsBreakdown {
+  ad_id: string;
+  age_gender: AdAgeGenderBreakdown[];
+  placements: AdPlacementBreakdown[];
+  video_retention: AdVideoRetention | null;
 }
 
 // ── Dashboard Page Props ──

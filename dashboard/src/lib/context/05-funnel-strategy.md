@@ -1,223 +1,361 @@
 # Funnel Strategy — Jockey
 
-## How the AI Agent Uses This
-The agent uses this document to: understand why each campaign exists and what success looks like at each stage, evaluate whether campaigns are doing what they were designed to do, recommend moving creatives between stages based on performance, identify funnel bottlenecks, and match creative angles to the correct funnel stage.
-
-## Funnel Architecture Overview
-
-### Structure
-- **Total Stages:** 3 (TOF → MOF → BOF)
-- **Campaign Objective by Stage:**
-  - TOF: ___
-  - MOF: ___
-  - BOF: ___
-- **Campaign Structure:** ___
-- **Attribution Window:** ___
-- **Optimization Event:** ___
-
-### Budget Allocation
-| Stage | % of Total Budget | EU Weekly Budget | UK Weekly Budget | Rationale |
-|-------|-------------------|------------------|------------------|-----------|
-| TOF | ___% | €___ | £___ | Feed the funnel with new audiences |
-| MOF | ___% | €___ | £___ | Re-engage warm audiences |
-| BOF | ___% | €___ | £___ | Convert high-intent audiences |
-| Testing | ___% | €___ | £___ | Separate — never borrowed from active campaigns |
-| **Total** | 100% | €___ | £___ | |
-
-### Budget Rules
-- If BOF ROAS drops below ___ for 3+ days → reallocate to TOF to feed the funnel
-- If TOF CPA exceeds target → reduce budget, investigate creative
-- Never let BOF spend exceed ___% of total — diminishing returns on small retargeting pools
-- Testing budget is separate and never borrowed from active campaigns
+> This document defines how the AI agent understands the objective of each funnel stage, evaluates creative placement, generates insights, and makes recommendations. All benchmarks referenced here are governed by `kpi-benchmarks-jockey.md`. All creative angle labels use parser canonical categories from `ad-naming-convention-parser.md`. All product and audience references must be consistent with `brand-bible-jockey.md`.
 
 ---
 
-## TOF — Top of Funnel (Prospecting)
+## 0. How the AI Agent Uses This Document
 
-### Purpose
+The agent uses this document to:
+
+- Understand the purpose, audience, and creative strategy of each funnel stage
+- Validate whether an ad's parsed funnel stage matches its creative angle and format
+- Generate stage-appropriate insights and recommendations
+- Diagnose WHERE in the funnel performance is breaking down, not just THAT it's breaking down
+- Apply the correct evaluation priority per stage (diagnostic-first at TOF, conversion-first at BOF)
+
+### 0.1 Cross-Document Dependencies
+
+| Document | What This Document Pulls From It |
+|---|---|
+| `kpi-benchmarks-jockey.md` | All numeric targets, floors, evaluation rules, spend allocation logic, diagnostic action rules |
+| `ad-naming-convention-parser.md` | Canonical angle categories, format definitions, funnel stage keywords, product mappings |
+| `brand-bible-jockey.md` | Avatar definitions, product catalog, hero product assignments, claim safety tags, brand voice rules |
+
+### 0.2 Rules
+
+- Never duplicate benchmark numbers in this document — always reference `kpi-benchmarks-jockey.md` as the single source of truth
+- All creative angle labels in this document use the **parser canonical categories** from `ad-naming-convention-parser.md`, not internal strategy labels
+- If a strategy label (e.g., "Call-Out", "Symptom Highlight") is used for context, it must be mapped to its parser category (see Brand Bible Section 6.4)
+- All audience and product references must match the definitions in `brand-bible-jockey.md`
+
+---
+
+## 1. TOF — Top of Funnel (Prospecting)
+
+### 1.1 Purpose
+
 Acquire new potential customers who have never interacted with the brand. Drive initial awareness and website visits. Feed the retargeting pools for MOF and BOF.
 
-### Creative Strategy at TOF
+### 1.2 Audience Definition
+
+| Field | Detail |
+|---|---|
+| **Audience Types** | Broad / interest-based / lookalikes — no engagement retargeting |
+| **Exclusions** | Exclude all website visitors, all purchasers, all engaged users |
+| **Awareness Levels** | Unaware, Problem Aware |
+
+### 1.3 Evaluation Priority
+
+> Reference: `kpi-benchmarks-jockey.md` Section 2.1
+
+TOF is **diagnostic-first**. The agent must not kill a TOF campaign solely on ROAS if diagnostic metrics are strong.
+
+**Evaluation order:** CPM → CTR → Hook Rate → Add to Cart Rate → then CPA / ROAS as secondary confirmation.
+
+| Role | KPIs |
+|---|---|
+| **Primary (diagnostic)** | CPM, CTR (link), Hook Rate (video) |
+| **Secondary (efficiency)** | Add to Cart Rate |
+| **Monitored (not primary kill signal)** | CPA, Meta ROAS |
+| **Saturation control** | Frequency (7-day max: 2.0) |
+
+### 1.4 Creative Strategy
 
 **Objective:** Make the right person stop scrolling, feel seen, and click.
 
-**Best creative angles for TOF (from Creative Overview):**
-
-| Angle | What It Does | Format | Notes |
-|-------|-------------|--------|-------|
-| Call-Out | Directly names the problem the customer already feels | Static, UGC | "If you're dealing with X, this is for you" |
-| Symptom Highlight | Shows the result of the problem, not the cause | Static, GIF | Works well as thumbstoppers |
-| "This Is Why" | Explains why the problem exists | Static diagram, short video | Mechanism > motivation |
-| Cause → Effect | One clear cause, one clear outcome | Static, video | Savannah staple for trust |
-| Before / After | Same person, same setup, different result | Static, GIF | Must be controlled and believable |
-| Outcome First | Starts with the result, not the product | Static, video | "Here's what changes" |
-| Day-in-the-Life | Product over time | Timeline video | Time-based signal |
-| Real-Life Setting | Normal environment | UGC | Avoid studio polish |
-| Blame Shift | Removes self-blame | Static, UGC | Extremely high resonance for body-related categories |
-| Moment of Frustration | Captures pain moment | UGC | Emotion without drama |
-
-**TOF creative rules (from Creative Overview):**
+**Rules:**
 - Each ad targets ONE avatar with ONE reason to care
 - 3 visual variations per concept
 - If the reason changes, it's a new concept
 - Kill rule: if it can't answer "Who is this for? Why do they care?" — it doesn't get made
-- Video: first 3 seconds must hook — problem or outcome first, product reveal by second 3-5
+- Video: first 3 seconds must hook — problem or outcome first, product reveal by second 3–5
 - UGC preferred over studio for relatable categories (comfort underwear)
 
-**TOF tone:** Relatable over persuasive. Sound like a real customer naming a real frustration.
+**Tone:** Relatable over persuasive. Sound like a real customer naming a real frustration.
 
-### Success Metrics at TOF
-| Metric | Target | Action if Below | Action if Above |
-|--------|--------|----------------|-----------------|
-| Hook Rate | ___% | Rework first 3 seconds | Scale, use as template |
-| CTR (link) | ___% | Creative fatigue, swap | Scale |
-| CPC | €/£___ | Check audience overlap | Maintain |
-| CPM | €/£___ | Audience too narrow | Efficient reach |
-| CPA | €/£___ | Reduce budget, test new creative | Scale 20% |
-| ROAS | ___ | Expected to be low at TOF — don't panic | Scale aggressively |
-| Frequency (7d) | ___ max | Above = creative fatigue | Fine |
+### 1.5 Creative Angles (Parser Canonical Categories)
 
-### Graduation Rules (TOF → Scale or Kill)
-- After €/£___ spend on an ad:
-  - CPA below target + CTR above threshold → **Scale** (increase budget 20%)
-  - CPA in range → **Maintain** (watch 3 more days)
-  - CPA above max → **Pause** (creative needs iteration)
-- If hook rate below threshold after 5,000 impressions → kill immediately
+| Parser Category | Strategy Labels (internal only) | Format | Notes |
+|---|---|---|---|
+| Problem / Pain Point | Call-Out, Symptom Highlight, "This Is Why", Cause → Effect | Static, UGC | Names the problem the customer already feels |
+| Before / After | Before / After | Static, GIF | Must be controlled and believable |
+| Benefits Call-Out | Outcome First | Static, Video | Starts with the result, not the product |
+| Lifestyle / Day-in-the-Life | Day-in-the-Life, Real-Life Setting, Moment of Frustration | Timeline Video, UGC | Avoid studio polish |
+| Blame Shift | Blame Shift | Static, UGC | Extremely high resonance for body-related categories — use sparingly |
+
+### 1.6 Avatar × Hero Product at TOF
+
+> Reference: `brand-bible-jockey.md` Section 2.6 and Section 6.5
+
+| Avatar | Hero Product | Best TOF Angle (Parser Category) |
+|---|---|---|
+| UK Female 30–65+ | Light Lift Bra | Problem / Pain Point (wire pain) |
+| EU/DE Female 28–60 | Light Lift Bra | Problem / Pain Point (bügellos) |
+| UK Male 35–85+ | Classic Full-Rise Y-Front Brief | ___ |
+| EU/DE Male 20–55 | Cotton Stretch Boxer Trunk 3-Pack | Us vs Them / Comparison (vs fashion brands) |
+| Gift Buyer (Female) | Cotton Stretch Boxer Trunk 3-Pack | ___ |
 
 ---
 
-## MOF — Middle of Funnel (Warm Retargeting)
+## 2. MOF — Middle of Funnel (Warm Retargeting)
 
-### Purpose
+### 2.1 Purpose
+
 Re-engage people who showed initial interest but haven't purchased. Build product consideration, handle objections, provide social proof, and move people closer to purchase.
 
-### Creative Strategy at MOF
+### 2.2 Audience Definition
+
+| Field | Detail |
+|---|---|
+| **Audience Types** | Website visitors (___–___ days), video viewers (___%), engaged users |
+| **Exclusions** | Exclude purchasers (___ days), exclude BOF audiences |
+| **Awareness Levels** | Solution Aware |
+
+### 2.3 Evaluation Priority
+
+> Reference: `kpi-benchmarks-jockey.md` Section 2.2
+
+MOF is **consideration efficiency**. CPA, ROAS, and Add to Cart Rate are all primary.
+
+| Role | KPIs |
+|---|---|
+| **Primary** | CTR (link), Add to Cart Rate, CPA, Meta ROAS |
+| **Saturation control** | Frequency (7-day max: 4.0) |
+
+### 2.4 Creative Strategy
 
 **Objective:** Overcome doubt, build trust, prove the product delivers.
 
-**Best creative angles for MOF (from Creative Overview):**
-
-| Angle | What It Does | Format | Notes |
-|-------|-------------|--------|-------|
-| Objection Call-Out | Names the doubt explicitly | Static, UGC | "You might think…" — mid-funnel gold |
-| Expectation vs Reality | What they expect vs what happens | Static | Comparison shoppers |
-| What It Is / Isn't | Sets clear boundaries | Static | Reduces friction and returns |
-| Calm Testimonial | Matter-of-fact user insight | UGC | No hype allowed |
-| "I Didn't Expect…" | Pleasant surprise framing | UGC | Signals authenticity |
-| Us vs Them | Brand vs category norm | Split static | Keep factual, not aggressive |
-| Use-Case Outcome | Shows real-life benefit | UGC, demo | Very Savannah-coded |
-| Wardrobe / Lifestyle Win | Shows how life improves | Try-on, mirror | Focus on function |
-| Touch & Feel | Physical interaction demo | Hands video | Savannah favorite |
-| Feature Isolation | One feature, one benefit | Static | Never stack features |
-| Build Quality | Construction focus | Close-up | Works when trust matters |
-| Myth Busting | Breaks common belief | Static text | Must be evidence-backed |
-
-**MOF creative rules:**
+**Rules:**
 - Address the specific objection or doubt the avatar has
-- Use REAL customer language from reviews (see product catalog safe claims)
+- Use REAL customer language from reviews (see `brand-bible-jockey.md` Section 3, safe claims only)
 - Never stack multiple reasons — one reason per ad
 - Social proof must be "calm testimonial" style — no hype, no exaggeration
-- Product demo/touch-and-feel videos perform strongly here
+- Product demo / touch-and-feel videos perform strongly here
 
-**MOF tone:** Honest, evidence-backed, "the data says" not "we promise."
+**Tone:** Matter-of-fact. Evidence over enthusiasm.
 
-### Success Metrics at MOF
-| Metric | Target | Action if Below | Action if Above |
-|--------|--------|----------------|-----------------|
-| CTR (link) | ___% | Should be higher than TOF | Scale |
-| Add to Cart Rate | ___% | Key MOF metric — investigate LP if low | Scale |
-| CPA | €/£___ | Lower than TOF expected | Scale |
-| ROAS | ___ | Higher than TOF expected | Scale |
-| Frequency (7d) | ___ max | Above 4.0 = ad fatigue risk | Fine |
+### 2.5 Creative Angles (Parser Canonical Categories)
+
+| Parser Category | Strategy Labels (internal only) | Format | Notes |
+|---|---|---|---|
+| Objection Handling | Objection Call-Out, What It Is / Isn't, Myth Busting | Static, UGC | "You might think…" — mid-funnel gold |
+| Expectation vs Reality | Expectation vs Reality | Static | Comparison shoppers |
+| Calm Testimonial | Calm Testimonial, "I Didn't Expect…" | UGC | No hype allowed |
+| Testimonial / Social Proof | Customer Story, Pattern Recognition | UGC | Must be review-backed (`[REVIEW]` tag) |
+| Us vs Them / Comparison | Us vs Them | Split Static | Keep factual, not aggressive. Never name competitors (see Brand Bible Section 4) |
+| Benefits Call-Out | Use-Case Outcome, Wardrobe / Lifestyle Win | UGC, Demo | Very Savannah-coded |
+| Touch & Feel | Touch & Feel, Build Quality | Hands Video, Close-Up | Works when trust matters |
+| Feature Isolation | Feature Isolation | Static | Never stack features — one feature, one benefit |
+| Before / After | Before / After | Static, GIF | Proof-driven buyers |
+
+### 2.6 Avatar × Hero Product at MOF
+
+> Reference: `brand-bible-jockey.md` Section 6.5
+
+| Avatar | Hero Product | Best MOF Angle (Parser Category) |
+|---|---|---|
+| UK Female 30–65+ | Light Lift Bra | Calm Testimonial / Touch & Feel |
+| EU/DE Female 28–60 | Light Lift Bra | Feature Isolation / Us vs Them / Comparison |
+| UK Male 35–85+ | Classic Full-Rise Y-Front Brief | Calm Testimonial (loyalty) |
+| EU/DE Male 20–55 | Cotton Stretch Boxer Trunk 3-Pack | Benefits Call-Out / Feature Isolation |
+| Gift Buyer (Female) | Cotton Stretch Boxer Trunk 3-Pack | ___ |
 
 ---
 
-## BOF — Bottom of Funnel (Conversion / Hot Retargeting)
+## 3. BOF — Bottom of Funnel (Conversion / Hot Retargeting)
 
-### Purpose
+### 3.1 Purpose
+
 Convert high-intent visitors (cart abandoners, repeat visitors, engaged audiences) into purchasers. Remove final barriers to purchase.
 
-### Creative Strategy at BOF
+### 3.2 Audience Definition
+
+| Field | Detail |
+|---|---|
+| **Audience Types** | Add to cart (no purchase, ___ days), checkout initiated (no purchase, ___ days), product page viewers (___+ pages, ___ days), past purchasers (cross-sell, ___–___ days) |
+| **Exclusions** | Exclude purchasers (___ days) to avoid post-purchase overlap |
+| **Awareness Levels** | Product Aware, Most Aware |
+
+### 3.3 Evaluation Priority
+
+> Reference: `kpi-benchmarks-jockey.md` Section 2.3
+
+BOF carries the **strongest direct conversion expectation**. CPA, ROAS, and AOV are all primary.
+
+| Role | KPIs |
+|---|---|
+| **Primary** | Conversion Rate, CPA, Meta ROAS, Meta AOV |
+| **Secondary** | CTR (link) |
+| **Saturation control** | Frequency (7-day max: 6.0) |
+
+> **Note:** BOF Conversion Rate benchmark is not yet defined. See `kpi-benchmarks-jockey.md` Section 2.3. Agent must state "benchmark not yet defined" and rely on other populated KPIs.
+
+### 3.4 Creative Strategy
 
 **Objective:** Make the purchase decision feel easy, safe, and obvious.
 
-**Best creative angles for BOF (from Creative Overview):**
-
-| Angle | What It Does | Format | Notes |
-|-------|-------------|--------|-------|
-| Buying Clarity | Makes decision easy | Static | "Who this is for" |
-| Risk Reversal | Removes fear | Static | Simple, credible only |
-| Reason to Switch | Why change now | Static | Very strong for apparel |
-| Decision Elimination | Removes daily choice | Static | "Put it on and forget it" |
-| Peace-of-Mind | Calm reassurance | Static | Very effective for older demos |
-| Friction Removal | Shows what user no longer does | Static, video | "No more adjusting / fixing" |
-| Pattern Recognition | Repeated issue until solution | Montage video | Frustrated buyers |
-
-**BOF creative rules:**
+**Rules:**
 - Multipack value messaging strongest here
 - Risk reversal (returns, size guidance) is a conversion lever, not an afterthought
 - DPA for winner products with clear product imagery
 - Keep it simple — one reason, one action, one product
+- Offer / promo messaging and urgency are high-performers at BOF
 
-**BOF tone:** Reassuring, clear, low-pressure. "Here's why this makes sense for you."
+**Tone:** Simple. Reassuring. Obvious next step.
 
-### Success Metrics at BOF
-| Metric | Target | Action if Below | Action if Above |
-|--------|--------|----------------|-----------------|
-| CTR (link) | ___% | Should be highest across funnel | Scale |
-| Conversion Rate | ___% | Key BOF metric | Scale |
-| CPA | €/£___ | Should be lowest in funnel | Scale aggressively |
-| ROAS | ___ | Should be highest in funnel | Scale aggressively |
-| Frequency (7d) | ___ max | Above 6.0 = diminishing returns | Fine |
+### 3.5 Creative Angles (Parser Canonical Categories)
 
----
+| Parser Category | Strategy Labels (internal only) | Format | Notes |
+|---|---|---|---|
+| Buying Clarity | Buying Clarity, Reason to Switch, Decision Elimination | Static | "Who this is for" — makes the decision easy |
+| Risk Reversal | Risk Reversal | Static | Simple, credible only |
+| Offer / Promo | Offer, Bundle, Free Shipping, Promo Code | Static, DPA | Multipack value, seasonal promotions |
+| Urgency / Scarcity | Urgency, Limited, Last Chance, Countdown | Static | Use only when offer is real — never manufacture false scarcity |
+| Calm Testimonial | Peace-of-Mind, Calm Reassurance | Static | Very effective for older demos |
+| Benefits Call-Out | Friction Removal | Static, Video | "No more adjusting / fixing" |
 
-## Campaign Types
+### 3.6 Avatar × Hero Product at BOF
 
-### Hero Product Campaigns
-- Dedicated creative for one product
-- Full funnel (TOF → MOF → BOF)
-- Products: Cotton Stretch Boxer Trunk 3-Pack (EU/DE Male), Classic Full-Rise Y-Front Brief (UK Male), Light Lift Bra (UK Female), Back Smoothing Bralette (UK Female), Skimmies (UK Female), Worry Free Brief (UK Female)
+> Reference: `brand-bible-jockey.md` Section 6.5
 
-### DPA — Winner Products
-- Dynamic Product Ads for top-performing products
-- BOF focus — retargeting viewers and cart abandoners
-- Product feed with clear imagery
-
-### DPA — Collections
-- Dynamic Product Ads for full collections
-- Broad retargeting
-- Catalogue-driven
+| Avatar | Hero Product | Best BOF Angle (Parser Category) |
+|---|---|---|
+| UK Female 30–65+ | Light Lift Bra | Risk Reversal / Buying Clarity |
+| EU/DE Female 28–60 | Light Lift Bra | Offer / Promo (multipack value) |
+| UK Male 35–85+ | Classic Full-Rise Y-Front Brief | Offer / Promo (bulk multipack) |
+| EU/DE Male 20–55 | Cotton Stretch Boxer Trunk 3-Pack | Offer / Promo (Preis-Leistung) |
+| Gift Buyer (Female) | Cotton Stretch Boxer Trunk 3-Pack | Offer / Promo (gift bundle) |
 
 ---
 
-## Creative-to-Funnel Mapping (Quick Reference)
+## 4. Campaign Types
 
-| Creative Angle | TOF | MOF | BOF |
-|---------------|:---:|:---:|:---:|
-| Call-Out / Problem Identification | ✅ | | |
-| Symptom Highlight | ✅ | | |
+### 4.1 Hero Product Campaigns
+
+| Field | Detail |
+|---|---|
+| **Structure** | Dedicated creative for one product, full funnel (TOF → MOF → BOF) |
+| **Products** | Cotton Stretch Boxer Trunk 3-Pack (EU/DE Male), Classic Full-Rise Y-Front Brief (UK Male), Light Lift Bra (UK/EU Female), Back Smoothing Bralette (UK/EU Female), Skimmies (UK/EU Female), Worry Free Brief (UK/EU Female) |
+| **Evaluation** | Apply stage-specific benchmarks from `kpi-benchmarks-jockey.md` Sections 2.1–2.3 |
+
+### 4.2 DPA — Winner Products
+
+| Field | Detail |
+|---|---|
+| **Structure** | Dynamic Product Ads for top-performing products |
+| **Funnel Stage** | BOF — retargeting viewers and cart abandoners |
+| **Format** | DPA (product feed with clear imagery) |
+| **Evaluation** | Apply BOF benchmarks: CPA, ROAS, AOV from `kpi-benchmarks-jockey.md` Section 2.3 |
+| **Parser mapping** | Format = DPA; Funnel = BOF (explicit or via fallback table — DPA defaults to BOF regardless of frequency) |
+
+### 4.3 DPA — Collections
+
+| Field | Detail |
+|---|---|
+| **Structure** | Dynamic Product Ads for full collections |
+| **Funnel Stage** | BOF — broad retargeting |
+| **Format** | DPA (catalogue-driven) |
+| **Evaluation** | Apply BOF benchmarks. Monitor AOV closely — catalogue DPA can pull AOV down if low-price products dominate the feed |
+| **Parser mapping** | Format = DPA; Funnel = BOF |
+
+---
+
+## 5. Budget Split Guidelines
+
+> Reference: `brand-bible-jockey.md` Section 7.4
+
+| Scenario | TOF | MOF | BOF |
+|---|---|---|---|
+| **Growth / Prospecting phase** | 60% | 25% | 15% |
+| **Stable / Optimization phase** | 50% | 30% | 20% |
+| **Promotional / Sale period** | 40% | 25% | 35% |
+
+> Adjust based on actual performance. These are starting points.
+
+---
+
+## 6. Creative-to-Funnel Mapping (Quick Reference)
+
+> All angle labels use parser canonical categories from `ad-naming-convention-parser.md`.
+
+| Parser Category (Canonical) | TOF | MOF | BOF |
+|---|:---:|:---:|:---:|
+| Problem / Pain Point | ✅ | | |
 | Before / After | ✅ | ✅ | |
-| Outcome First | ✅ | ✅ | |
-| Day-in-the-Life | ✅ | | |
+| Benefits Call-Out | ✅ | ✅ | |
+| Lifestyle / Day-in-the-Life | ✅ | | |
 | Blame Shift | ✅ | | |
-| Objection Call-Out | | ✅ | |
+| Objection Handling | | ✅ | |
+| Expectation vs Reality | | ✅ | |
 | Calm Testimonial | | ✅ | ✅ |
-| "I Didn't Expect…" | | ✅ | |
-| Us vs Them | | ✅ | |
-| What It Is / Isn't | | ✅ | |
+| Testimonial / Social Proof | | ✅ | |
+| Us vs Them / Comparison | | ✅ | |
 | Touch & Feel | | ✅ | |
 | Feature Isolation | | ✅ | |
 | Buying Clarity | | | ✅ |
 | Risk Reversal | | | ✅ |
-| Reason to Switch | | | ✅ |
-| Decision Elimination | | | ✅ |
-| Peace-of-Mind | | | ✅ |
-| Friction Removal | | ✅ | ✅ |
+| Offer / Promo | | | ✅ |
+| Urgency / Scarcity | | | ✅ |
 
-## Funnel Health Diagnostics (AI Agent Rules)
-- If TOF impressions are high but MOF pool is small → creative isn't driving clicks, rework hooks
-- If MOF engagement is high but BOF purchases are low → landing page or checkout friction, not ad problem
-- If BOF frequency exceeds 6.0 → audience exhausted, need more TOF to refill
-- If all stages show declining ROAS simultaneously → likely external factor (seasonality, tracking, site issue), not funnel structure
-- If one product dominates spend across all stages → check if other hero products have active creative
+### 6.1 Misplacement Detection Rule
+
+The agent should flag when a parsed ad's funnel stage does not match the expected stage for its angle:
+
+| Condition | Agent Action |
+|---|---|
+| Ad angle is BOF-only (Buying Clarity, Risk Reversal, Offer / Promo) but parsed funnel = TOF | Flag: "Creative angle suggests BOF placement — verify campaign setup" |
+| Ad angle is TOF-only (Problem / Pain Point, Blame Shift) but parsed funnel = BOF | Flag: "Creative angle suggests TOF placement — verify campaign setup" |
+| Ad angle spans multiple stages (e.g., Calm Testimonial = MOF + BOF) | No flag — valid placement in either stage |
+
+---
+
+## 7. Funnel Health Diagnostics
+
+> Reference: `kpi-benchmarks-jockey.md` Section 6
+
+The agent uses these rules to diagnose WHERE in the funnel performance is breaking down.
+
+| Symptom | Stage | Diagnosis | Recommended Action |
+|---|---|---|---|
+| High TOF impressions but low MOF pool size | TOF → MOF | Creative isn't driving clicks — hooks are weak | Test new hooks, keep same message |
+| Good CTR but low Add to Cart | TOF / MOF | Landing page mismatch or wrong product for audience | Review LP, check product-audience fit |
+| Good Add to Cart but low Purchase | MOF → BOF | Checkout friction (shipping cost, payment methods, trust) | Investigate checkout flow |
+| High Frequency + declining CTR | Any | Ad fatigue | Rotate creative, expand audience |
+| Meta ROAS declining week over week but spend is stable | Any | Audience saturation or creative decay | Refresh creative, test new audiences |
+| Strong MOF engagement but BOF isn't converting | MOF → BOF | BOF creative is too weak or offer isn't compelling | Test new BOF angles, review offer strategy |
+| CPM suddenly spikes | TOF | Auction competition increased (seasonal, competitor entry) | Check if competitors launched campaigns, adjust bids |
+| AOV dropping | BOF | Customers buying fewer items per order or cheaper products | Push multipacks, review DPA product mix |
+| Meta ROAS strong but Blended MER declining | Cross-stage | Meta is cannibalizing organic/direct traffic, not generating incremental revenue | Review attribution, test incrementality, check organic channel trends |
+| Blended MER strong but Meta ROAS weak | Cross-stage | Other channels (email, organic, direct) are carrying the business | Investigate Meta's contribution to top-of-funnel awareness before cutting |
+
+---
+
+## 8. Stage Exclusion Logic
+
+> The agent should flag misconfigurations when audience exclusions are missing or overlapping between stages.
+
+| Stage | Must Exclude | Reason |
+|---|---|---|
+| **TOF** | All website visitors, all purchasers, all engaged users | TOF must only reach cold audiences — any warm traffic inflates TOF metrics artificially |
+| **MOF** | All purchasers (___ days), all BOF custom audiences | Prevents MOF from taking credit for BOF-intent users |
+| **BOF** | Recent purchasers (___ days) | Prevents post-purchase ad fatigue and wasted spend on converted users |
+
+| Misconfiguration | Agent Action |
+|---|---|
+| TOF campaign includes website visitors in audience | Flag: "TOF audience includes warm traffic — metrics will be inflated. Exclude site visitors." |
+| MOF campaign does not exclude purchasers | Flag: "MOF audience may include existing customers — exclude purchasers to measure true consideration." |
+| BOF campaign does not exclude recent purchasers | Flag: "BOF may be serving ads to recent buyers — exclude purchasers (X days) to avoid waste." |
+
+---
+
+## 9. Document Maintenance
+
+| Action | Frequency | Owner |
+|---|---|---|
+| Review funnel audience definitions and fill `___` fields | Before launch / quarterly | ___ |
+| Validate creative-to-funnel mapping against live campaigns | Monthly | ___ |
+| Update avatar × product × angle tables when new products launch | As needed | ___ |
+| Cross-check with `kpi-benchmarks-jockey.md` when benchmarks change | Monthly | ___ |
+| Review misplacement flags from agent logs | Weekly | ___ |

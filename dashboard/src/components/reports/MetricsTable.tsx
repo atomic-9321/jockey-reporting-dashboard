@@ -45,7 +45,7 @@ function MetricCell({
         <TooltipTrigger>
           <span className="flex items-center gap-1">
             {display}
-            <AlertTriangle size={12} className="text-amber-400" />
+            <AlertTriangle size={12} className="text-amber-400/80" />
           </span>
         </TooltipTrigger>
         <TooltipContent>
@@ -55,7 +55,7 @@ function MetricCell({
     );
   }
 
-  return <span className={value === null ? "text-muted-foreground" : ""}>{display}</span>;
+  return <span className={value === null ? "text-muted-foreground/40" : "tabular-nums"}>{display}</span>;
 }
 
 export function MetricsTable({ campaigns, currency }: MetricsTableProps) {
@@ -65,16 +65,16 @@ export function MetricsTable({ campaigns, currency }: MetricsTableProps) {
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
-          <TableRow className="border-border/50">
-            <TableHead className="text-xs">Campaign</TableHead>
-            <TableHead className="text-xs text-right">Investment</TableHead>
-            <TableHead className="text-xs text-right">Impressions</TableHead>
-            <TableHead className="text-xs text-right">Clicks</TableHead>
-            <TableHead className="text-xs text-right">CTR</TableHead>
-            <TableHead className="text-xs text-right">Purchases</TableHead>
-            <TableHead className="text-xs text-right">Revenue</TableHead>
-            <TableHead className="text-xs text-right">Ad ROAS</TableHead>
-            <TableHead className="text-xs text-right">CPA</TableHead>
+          <TableRow className="border-border/30 hover:bg-transparent">
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Campaign</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">Investment</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">Impressions</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">Unique Link Clicks</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">CTR</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">Purchases</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">Revenue</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">ROAS</TableHead>
+            <TableHead className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider text-right">CPA</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -83,7 +83,7 @@ export function MetricsTable({ campaigns, currency }: MetricsTableProps) {
               campaign.anomalies?.find((a) => a.metric === metric);
 
             return (
-              <TableRow key={idx} className="border-border/30">
+              <TableRow key={idx} className="border-border/20 cyber-table-row">
                 <TableCell className="text-sm font-medium max-w-[200px] truncate">
                   {campaign.name}
                 </TableCell>

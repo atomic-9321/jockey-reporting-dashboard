@@ -3,21 +3,32 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   buildSystemPrompt,
   buildDataPrompt,
+  buildReportSystemPrompt,
+  buildReportDataPrompt,
   CURRENT_PROMPT_VERSION,
 } from "@/lib/context/prompt-templates";
-import type { InsightDataPayload } from "@/lib/context/prompt-templates";
+import type { InsightDataPayload, ReportDataPayload } from "@/lib/context/prompt-templates";
 import { loadCampaigns, loadAds, loadAnnotations, loadInsightHistory } from "@/lib/data-loader";
-import { aggregateCampaignsByWeek, buildFunnel, getTopAds, computeWoWChange, flagAnomalies, getAvailableCWs } from "@/lib/metrics";
+import {
+  aggregateCampaignsByWeek,
+  buildFunnel,
+  getTopAds,
+  computeWoWChange,
+  flagAnomalies,
+  getAvailableCWs,
+  aggregateMetrics,
+} from "@/lib/metrics";
 import { AI_MAX_TOKENS, AI_TEMPERATURE, CURRENCY_MAP } from "@/lib/constants";
-import type { Region, InsightResult } from "@/lib/types";
+import type { Region, InsightResult, ReportInsightResult } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { region: regionStr, period, period_type } = body as {
+    const { region: regionStr, period, period_type, mode } = body as {
       region: string;
       period: string;
       period_type: "weekly" | "monthly";
+      mode?: "default" | "report";
     };
 
     const region = regionStr.toUpperCase() as Region;
@@ -84,9 +95,7 @@ export async function POST(request: NextRequest) {
       .slice(-4)
       .map((h) => h.summary);
 
-    // Build prompts
-    const systemPrompt = await buildSystemPrompt();
-    const payload: InsightDataPayload = {
+    const basePayload: InsightDataPayload = {
       region,
       currency,
       period,
@@ -109,13 +118,42 @@ export async function POST(request: NextRequest) {
       historical_summaries: historicalSummaries,
     };
 
-    const dataPrompt = buildDataPrompt(payload);
+    // Build prompts based on mode
+    let systemPrompt: string;
+    let dataPrompt: string;
+
+    if (mode === "report") {
+      // Build per-campaign breakdowns
+      const campaignBreakdowns = campaigns
+        .map((c) => {
+          const metrics = c.weekly_breakdown[period];
+          if (!metrics || metrics.spend === null || metrics.spend <= 0) return null;
+          const prevMetrics = previousCW ? c.weekly_breakdown[previousCW] : null;
+          const changes = prevMetrics ? computeWoWChange(metrics, prevMetrics) : null;
+          return {
+            campaign_name: c.campaign_name,
+            metrics,
+            wow_changes: changes,
+          };
+        })
+        .filter(Boolean) as ReportDataPayload["campaign_breakdowns"];
+
+      systemPrompt = await buildReportSystemPrompt();
+      const reportPayload: ReportDataPayload = {
+        ...basePayload,
+        campaign_breakdowns: campaignBreakdowns,
+      };
+      dataPrompt = buildReportDataPrompt(reportPayload);
+    } else {
+      systemPrompt = await buildSystemPrompt();
+      dataPrompt = buildDataPrompt(basePayload);
+    }
 
     // Call Claude API
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: AI_MAX_TOKENS,
+      max_tokens: mode === "report" ? 4000 : AI_MAX_TOKENS,
       temperature: AI_TEMPERATURE,
       system: systemPrompt,
       messages: [{ role: "user", content: dataPrompt }],
@@ -125,6 +163,36 @@ export async function POST(request: NextRequest) {
     const responseText =
       message.content[0].type === "text" ? message.content[0].text : "";
 
+    if (mode === "report") {
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+        const result: ReportInsightResult = {
+          overall_insights: parsed?.overall_insights || [],
+          campaign_insights: parsed?.campaign_insights || {},
+          creative_recommendations: parsed?.creative_recommendations || [],
+          generated_at: new Date().toISOString(),
+          prompt_version: CURRENT_PROMPT_VERSION,
+          region,
+          period,
+        };
+        return NextResponse.json(result);
+      } catch {
+        const result: ReportInsightResult = {
+          overall_insights: [responseText.slice(0, 500)],
+          campaign_insights: {},
+          creative_recommendations: [],
+          generated_at: new Date().toISOString(),
+          prompt_version: CURRENT_PROMPT_VERSION,
+          region,
+          period,
+        };
+        return NextResponse.json(result);
+      }
+    }
+
+    // Default mode — original behavior
     let parsedInsight: InsightResult;
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
