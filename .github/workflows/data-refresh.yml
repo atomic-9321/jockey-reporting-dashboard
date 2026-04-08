@@ -28,7 +28,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client facebook-business
 
       - name: Run data refresh
         env:
@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client facebook-business
 
       - name: Check if Monday and generate weekly report
         env:
