@@ -9,6 +9,7 @@
 
 import { promises as fs } from "fs";
 import path from "path";
+import { list, getDownloadUrl } from "@vercel/blob";
 import type {
   CampaignData,
   AdData,
@@ -36,31 +37,17 @@ async function readLocalJson<T>(filename: string): Promise<T | null> {
 }
 
 async function readBlobJson<T>(filename: string): Promise<T | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return null;
-
   try {
-    const resp = await fetch("https://blob.vercel-storage.com", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "x-api-version": "7",
-      },
-    });
-    const data = await resp.json();
-    const blobs = (data as { blobs: Array<{ pathname: string; url: string }> }).blobs || [];
-    const blob = blobs.find(
-      (b: { pathname: string }) => b.pathname === filename
-    );
+    const { blobs } = await list({ prefix: filename });
+    const blob = blobs.find((b) => b.pathname === filename);
+    if (!blob) return null;
 
-    if (blob) {
-      const blobResp = await fetch(blob.url);
-      return (await blobResp.json()) as T;
-    }
+    const downloadUrl = getDownloadUrl(blob.url);
+    const resp = await fetch(downloadUrl);
+    return (await resp.json()) as T;
   } catch {
-    // Fall through to null
+    return null;
   }
-
-  return null;
 }
 
 async function loadJson<T>(filename: string): Promise<T | null> {
