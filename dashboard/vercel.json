@@ -1,0 +1,14 @@
+{
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/insights/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/ad-insights/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/refresh/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}
