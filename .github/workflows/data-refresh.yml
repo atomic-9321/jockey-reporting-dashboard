@@ -30,6 +30,18 @@ jobs:
         run: |
           pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client facebook-business
 
+      - name: Debug secret lengths
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
+        run: |
+          echo "META_ACCESS_TOKEN length: ${#META_ACCESS_TOKEN}"
+          echo "BLOB_READ_WRITE_TOKEN length: ${#BLOB_READ_WRITE_TOKEN}"
+          echo "GOOGLE_OAUTH_TOKEN_JSON length: ${#GOOGLE_OAUTH_TOKEN_JSON}"
+          echo "META_ACCESS_TOKEN starts with: ${META_ACCESS_TOKEN:0:4}"
+          echo "BLOB_READ_WRITE_TOKEN starts with: ${BLOB_READ_WRITE_TOKEN:0:10}"
+
       - name: Run data refresh
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
