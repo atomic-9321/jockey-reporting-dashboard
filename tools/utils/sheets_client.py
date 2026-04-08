@@ -28,14 +28,23 @@ def get_sheets_service():
     - Service account: set GOOGLE_SERVICE_ACCOUNT_JSON env var (used in CI)
     - OAuth: uses credentials.json + token.json (used locally)
     """
-    # 1. Service account (CI / GitHub Actions)
+    # 1. Service account JSON (CI option A)
     sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if sa_json:
         info = json.loads(sa_json)
         creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
         return build("sheets", "v4", credentials=creds)
 
-    # 2. OAuth (local development)
+    # 2. OAuth token from env var (CI option B — no key file needed)
+    token_json = os.getenv("GOOGLE_OAUTH_TOKEN_JSON")
+    if token_json:
+        info = json.loads(token_json)
+        creds = Credentials.from_authorized_user_info(info, SCOPES)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        return build("sheets", "v4", credentials=creds)
+
+    # 3. OAuth from local files (development)
     creds = None
 
     if os.path.exists(TOKEN_PATH):
