@@ -9,7 +9,7 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { list, getDownloadUrl } from "@vercel/blob";
+import { get } from "@vercel/blob";
 import type {
   CampaignData,
   AdData,
@@ -38,13 +38,11 @@ async function readLocalJson<T>(filename: string): Promise<T | null> {
 
 async function readBlobJson<T>(filename: string): Promise<T | null> {
   try {
-    const { blobs } = await list({ prefix: filename });
-    const blob = blobs.find((b) => b.pathname === filename);
-    if (!blob) return null;
+    const result = await get(filename, { access: "private" });
+    if (!result || result.statusCode !== 200) return null;
 
-    const downloadUrl = getDownloadUrl(blob.url);
-    const resp = await fetch(downloadUrl);
-    return (await resp.json()) as T;
+    const text = await new Response(result.stream).text();
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }
