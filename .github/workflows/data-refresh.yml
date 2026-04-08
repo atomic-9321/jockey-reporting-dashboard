@@ -1,0 +1,92 @@
+name: Data Refresh
+
+on:
+  schedule:
+    # Every 6 hours: midnight, 6am, noon, 6pm UTC
+    - cron: "0 0,6,12,18 * * *"
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Region to refresh (eu, uk, or all)"
+        required: false
+        default: "all"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+
+      - name: Run data refresh
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_EU_ACCOUNT_ID: ${{ secrets.META_EU_ACCOUNT_ID }}
+          META_UK_ACCOUNT_ID: ${{ secrets.META_UK_ACCOUNT_ID }}
+          META_TOKEN_CREATED_AT: ${{ secrets.META_TOKEN_CREATED_AT }}
+          GOOGLE_SHEETS_EU_ID: ${{ secrets.GOOGLE_SHEETS_EU_ID }}
+          GOOGLE_SHEETS_UK_ID: ${{ secrets.GOOGLE_SHEETS_UK_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          NOTIFICATION_SLACK_WEBHOOK: ${{ secrets.NOTIFICATION_SLACK_WEBHOOK }}
+        run: |
+          REGION="${{ github.event.inputs.region || 'all' }}"
+          python tools/refresh_all_data.py --region "$REGION"
+
+  weekly-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Generate weekly report every Monday at 8am UTC
+    if: github.event.schedule == '0 0,6,12,18 * * *' && (github.event_name == 'schedule')
+    needs: refresh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+
+      - name: Check if Monday and generate weekly report
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DASHBOARD_BASE_URL: ${{ secrets.DASHBOARD_BASE_URL }}
+        run: |
+          DAY_OF_WEEK=$(date +%u)
+          HOUR=$(date -u +%H)
+          # Only run on Mondays at the 6am UTC slot (closest to 8am CET)
+          if [ "$DAY_OF_WEEK" = "1" ] && [ "$HOUR" = "06" ]; then
+            # Calculate previous week's CW
+            PREV_MONDAY=$(date -d "last monday - 7 days" +%Y-%m-%d 2>/dev/null || date -v-1w -v-mon +%Y-%m-%d)
+            CW=$(date -d "$PREV_MONDAY" +%G-CW%V 2>/dev/null || python3 -c "
+          from datetime import date, timedelta
+          today = date.today()
+          last_monday = today - timedelta(days=today.weekday() + 7)
+          iso = last_monday.isocalendar()
+          print(f'{iso[0]}-CW{iso[1]:02d}')
+          ")
+            echo "Generating weekly report for $CW"
+            python tools/generate_weekly_report.py --cw "$CW"
+          else
+            echo "Not Monday 6am UTC — skipping weekly report generation"
+          fi

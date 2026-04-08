@@ -1,10 +1,12 @@
 """Google Sheets API client with schema validation."""
 
 import os
+import json
 import logging
 from typing import Dict, List, Optional, Any
 
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -20,7 +22,20 @@ CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "credenti
 
 
 def get_sheets_service():
-    """Authenticate and return a Google Sheets service instance."""
+    """Authenticate and return a Google Sheets service instance.
+
+    Supports two auth modes:
+    - Service account: set GOOGLE_SERVICE_ACCOUNT_JSON env var (used in CI)
+    - OAuth: uses credentials.json + token.json (used locally)
+    """
+    # 1. Service account (CI / GitHub Actions)
+    sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if sa_json:
+        info = json.loads(sa_json)
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        return build("sheets", "v4", credentials=creds)
+
+    # 2. OAuth (local development)
     creds = None
 
     if os.path.exists(TOKEN_PATH):
