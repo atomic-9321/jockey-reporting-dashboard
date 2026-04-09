@@ -560,21 +560,63 @@ def fetch_ad_video_retention(
 
 
 def fetch_ad_creative_thumbnails(account_id: str, ad_ids: List[str]) -> Dict[str, Optional[str]]:
-    """Fetch creative thumbnail URLs for a list of ad IDs. Returns {ad_id: url_or_None}."""
+    """Fetch high-quality creative image URLs for a list of ad IDs.
+
+    Priority order:
+    1. Instagram media_url (full resolution)
+    2. Creative thumbnail_url (low-res fallback)
+
+    Returns {ad_id: url_or_None}.
+    """
     import requests
 
     init_api()
+    token = os.getenv("META_ACCESS_TOKEN")
     thumbnails = {}
 
     for ad_id in ad_ids:
         try:
-            ad = Ad(ad_id)
-            creative_data = _retry_with_backoff(
-                ad.api_get,
-                fields=["creative{thumbnail_url,effective_object_story_id}"],
+            url = None
+
+            # Use direct Graph API call to get creative fields (SDK doesn't handle nested fields well)
+            ad_resp = requests.get(
+                f"https://graph.facebook.com/v21.0/{ad_id}",
+                params={
+                    "fields": "creative{thumbnail_url,effective_instagram_media_id}",
+                    "access_token": token,
+                },
+                timeout=15,
             )
-            creative = creative_data.get("creative", {})
-            url = creative.get("thumbnail_url")
+            if ad_resp.status_code != 200:
+                thumbnails[ad_id] = None
+                continue
+
+            creative = ad_resp.json().get("creative", {})
+
+            # Try high-res: Instagram media
+            ig_media_id = creative.get("effective_instagram_media_id")
+            if ig_media_id:
+                try:
+                    ig_resp = requests.get(
+                        f"https://graph.facebook.com/v21.0/{ig_media_id}",
+                        params={"fields": "media_type,media_url,thumbnail_url", "access_token": token},
+                        timeout=10,
+                    )
+                    if ig_resp.status_code == 200:
+                        ig_data = ig_resp.json()
+                        media_type = ig_data.get("media_type", "")
+                        if media_type == "VIDEO":
+                            # For videos, use the video thumbnail (still image)
+                            url = ig_data.get("thumbnail_url")
+                        else:
+                            # For images/carousels, use the full-res media_url
+                            url = ig_data.get("media_url") or ig_data.get("thumbnail_url")
+                except Exception as e:
+                    logger.debug(f"IG media fetch failed for ad {ad_id}: {e}")
+
+            # Fallback: creative thumbnail_url
+            if not url:
+                url = creative.get("thumbnail_url")
 
             # Validate URL is still accessible
             if url:

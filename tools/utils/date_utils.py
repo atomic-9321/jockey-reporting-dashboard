@@ -1,7 +1,8 @@
 """Calendar week and date range utilities."""
 
+import re
 from datetime import datetime, timedelta, date
-from typing import Tuple, List
+from typing import Optional, Tuple, List
 
 
 def get_calendar_week(d: date) -> Tuple[int, int]:
@@ -54,6 +55,98 @@ def get_months_in_range(start_date: date, end_date: date) -> List[Tuple[int, int
         else:
             current = current.replace(month=current.month + 1)
     return months
+
+
+# ── Month Label Parsing (for ecosystem sheets) ──
+
+MONTH_MAP = {
+    "january": 1, "januar": 1, "jan": 1,
+    "february": 2, "februar": 2, "feb": 2,
+    "march": 3, "maerz": 3, "märz": 3, "mar": 3,
+    "april": 4, "apr": 4,
+    "may": 5, "mai": 5,
+    "june": 6, "juni": 6, "jun": 6,
+    "july": 7, "juli": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oktober": 10, "oct": 10, "okt": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dezember": 12, "dec": 12, "dez": 12,
+}
+
+
+def parse_month_label(label: str, fallback_year: Optional[int] = None) -> Optional[str]:
+    """Parse a month label like 'March 2025' or 'Dezember 2024' into 'YYYY-MM'.
+
+    Handles: 'March 2025', 'Dezember 2024', 'February', 'Mai 2025'.
+    If no year in the label, uses fallback_year (or current year).
+    Returns None if unparseable.
+    """
+    if not label or not isinstance(label, str):
+        return None
+    label = label.strip()
+
+    # Try "Month Year" or just "Month"
+    parts = label.split()
+    month_str = parts[0].lower().rstrip(",")
+    month_num = MONTH_MAP.get(month_str)
+    if month_num is None:
+        return None
+
+    year = fallback_year or date.today().year
+    if len(parts) >= 2:
+        try:
+            year = int(parts[-1])
+        except ValueError:
+            pass
+
+    return f"{year}-{month_num:02d}"
+
+
+def parse_daily_date(label: str, fallback_year: Optional[int] = None) -> Optional[str]:
+    """Parse a daily date label into 'YYYY-MM-DD'.
+
+    Handles formats like:
+    - 'Thursday, August 1'
+    - 'Monday, August 5'
+    - 'Sunday, June 8'
+    - '01/03/2025'
+    Returns None if unparseable.
+    """
+    if not label or not isinstance(label, str):
+        return None
+    label = label.strip()
+
+    # Try "DayOfWeek, Month Day" format
+    match = re.match(r"(?:\w+),?\s+(\w+)\s+(\d{1,2})", label)
+    if match:
+        month_str = match.group(1).lower()
+        day = int(match.group(2))
+        month_num = MONTH_MAP.get(month_str)
+        if month_num:
+            year = fallback_year or date.today().year
+            try:
+                return date(year, month_num, day).isoformat()
+            except ValueError:
+                return None
+
+    # Try DD/MM/YYYY
+    match = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", label)
+    if match:
+        day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return None
+
+    return None
+
+
+def date_to_cw(date_str: str) -> str:
+    """Convert 'YYYY-MM-DD' to 'YYYY-CWNN' (ISO calendar week)."""
+    d = date.fromisoformat(date_str)
+    iso_year, iso_week, _ = d.isocalendar()
+    return f"{iso_year}-CW{iso_week:02d}"
 
 
 def six_months_ago() -> date:

@@ -9,11 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
+import { EcosystemOverview } from "@/components/ecosystem/ChannelSection";
 import {
   formatCurrency,
   formatNumber,
   formatPercent,
   CURRENCY_SYMBOL,
+  ECOSYSTEM_CHANNELS,
   cwKeyToMonth,
 } from "@/lib/constants";
 import {
@@ -22,9 +24,10 @@ import {
   getAvailableCWs,
   getAvailableMonths,
   computeWoWChange,
+  getEcosystemForMonth,
 } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
-import type { CampaignData, Campaign } from "@/lib/types";
+import type { CampaignData, Campaign, EcosystemData } from "@/lib/types";
 
 function formatMonthLabel(month: string): string {
   const [year, m] = month.split("-");
@@ -39,6 +42,7 @@ function getCWsForMonth(allCWs: string[], monthStr: string): string[] {
 export default function MonthlyReportPage() {
   const { region, currency } = useRegion();
   const [data, setData] = useState<CampaignData | null>(null);
+  const [ecosystem, setEcosystem] = useState<EcosystemData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
@@ -48,6 +52,7 @@ export default function MonthlyReportPage() {
       .then((r) => r.json())
       .then((d) => {
         setData(d.campaigns);
+        setEcosystem(d.ecosystem);
         const cws = getAvailableCWs(d.campaigns?.campaigns || []);
         const months = getAvailableMonths(cws);
         setSelectedMonth(months[months.length - 1] || null);
@@ -144,7 +149,10 @@ export default function MonthlyReportPage() {
         ))}
       </div>
 
-      {/* KPIs */}
+      {/* Meta KPIs */}
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground/80">Meta</h3>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <KPICard label="Investment" value={formatCurrency(monthMetrics.spend, currency)} trend={momChanges?.spend ?? null} color="indigo" delay={0} />
         <KPICard label="Revenue" value={formatCurrency(monthMetrics.purchase_value, currency)} trend={momChanges?.purchase_value ?? null} color="emerald" delay={75} />
@@ -178,6 +186,33 @@ export default function MonthlyReportPage() {
           <MetricsTable campaigns={campaignRows} currency={currency} />
         </CardContent>
       </Card>
+
+      {/* Ecosystem Channel Data */}
+      {(() => {
+        const ecoRow = getEcosystemForMonth(ecosystem, selectedMonth);
+        const prevEcoRow = prevMonth
+          ? getEcosystemForMonth(ecosystem, prevMonth)
+          : null;
+        if (!ecoRow) return null;
+        return (
+          <div className="space-y-2 animate-fade-slide-up delay-375">
+            <div className="flex items-center gap-2 pt-2">
+              <div className="h-px flex-1 bg-border/30" />
+              <span className="text-xs text-muted-foreground/50 font-mono uppercase tracking-wider">
+                Ecosystem &middot; {formatMonthLabel(selectedMonth)}
+              </span>
+              <div className="h-px flex-1 bg-border/30" />
+            </div>
+            <EcosystemOverview
+              row={ecoRow}
+              previousRow={prevEcoRow}
+              currency={currency}
+              channels={ECOSYSTEM_CHANNELS}
+              periodLabel={formatMonthLabel(selectedMonth)}
+            />
+          </div>
+        );
+      })()}
 
       {/* AI Insights + Creative Recommendations */}
       <ReportInsights

@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FunnelChart } from "@/components/charts/FunnelChart";
 import { PyramidFunnel } from "@/components/charts/PyramidFunnel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
-import { CURRENCY_SYMBOL } from "@/lib/constants";
+import { ChannelSection } from "@/components/ecosystem/ChannelSection";
+import {
+  CURRENCY_SYMBOL,
+  ECOSYSTEM_CHANNELS,
+  cwKeyToMonth,
+} from "@/lib/constants";
 import {
   aggregateMetrics,
   buildFunnel,
   getAvailableCWs,
+  getEcosystemForCW,
 } from "@/lib/metrics";
-import type { CampaignData, Campaign, FunnelStep } from "@/lib/types";
+import type { CampaignData, Campaign, EcosystemData, FunnelStep } from "@/lib/types";
 
 export default function FunnelPage() {
   const { region, currency } = useRegion();
   const [data, setData] = useState<CampaignData | null>(null);
+  const [ecosystem, setEcosystem] = useState<EcosystemData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +31,7 @@ export default function FunnelPage() {
       .then((r) => r.json())
       .then((d) => {
         setData(d.campaigns);
+        setEcosystem(d.ecosystem);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -107,7 +114,7 @@ export default function FunnelPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={funnel} />
+          <PyramidFunnel steps={funnel} />
         </CardContent>
       </Card>
 
@@ -151,6 +158,43 @@ export default function FunnelPage() {
         </Card>
       </div>
 
+      {/* Ecosystem Context — Webshop vs Meta */}
+      {(() => {
+        const ecoRow = getEcosystemForCW(ecosystem, latestCW);
+        if (!ecoRow) return null;
+        const webshopConfig = ECOSYSTEM_CHANNELS.find((c) => c.key === "webshop");
+        const metaConfig = ECOSYSTEM_CHANNELS.find((c) => c.key === "meta");
+        return (
+          <div className="space-y-2 animate-fade-slide-up delay-300">
+            <div className="flex items-center gap-2 pt-2">
+              <div className="h-px flex-1 bg-border/30" />
+              <span className="text-xs text-muted-foreground/50 font-mono uppercase tracking-wider">
+                Ecosystem Context &middot; {cwKeyToMonth(latestCW)}
+              </span>
+              <div className="h-px flex-1 bg-border/30" />
+            </div>
+            <div className="space-y-4">
+              {webshopConfig && (
+                <ChannelSection
+                  config={webshopConfig}
+                  row={ecoRow}
+                  currency={currency}
+                  periodLabel={cwKeyToMonth(latestCW)}
+                />
+              )}
+              {metaConfig && (
+                <ChannelSection
+                  config={metaConfig}
+                  row={ecoRow}
+                  currency={currency}
+                  periodLabel={cwKeyToMonth(latestCW)}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* All-Time — Pyramid Funnel */}
       <Card className="glass-card gradient-border border-border/30 animate-fade-slide-up delay-300">
         <CardHeader>
@@ -177,7 +221,7 @@ export default function FunnelPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <FunnelChart steps={allTimeFunnel} />
+          <PyramidFunnel steps={allTimeFunnel} />
         </CardContent>
       </Card>
     </div>

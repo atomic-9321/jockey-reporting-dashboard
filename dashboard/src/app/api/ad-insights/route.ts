@@ -94,19 +94,19 @@ export async function GET(request: NextRequest) {
     const filtering = JSON.stringify([
       { field: "ad.id", operator: "EQUAL", value: adId },
     ]);
-    const baseFields = "spend,impressions,clicks,actions,action_values";
+    const baseFields = "spend,impressions,clicks,actions,action_values,purchase_roas";
 
     // Parallel requests: age/gender, placement, video retention
     const [ageGenderResult, placementResult, retentionResult] =
       await Promise.allSettled([
         // Age + Gender breakdown
         metaFetch(
-          `${META_API_BASE}/act_${accountId}/insights?filtering=${encodeURIComponent(filtering)}&breakdowns=age,gender&fields=${baseFields}&time_range=${encodeURIComponent(timeRange)}&level=ad&action_attribution_windows=["28d_click","1d_view"]`,
+          `${META_API_BASE}/${accountId}/insights?filtering=${encodeURIComponent(filtering)}&breakdowns=age,gender&fields=${baseFields}&time_range=${encodeURIComponent(timeRange)}&level=ad&action_attribution_windows=["28d_click","1d_view"]`,
           token,
         ),
         // Placement breakdown
         metaFetch(
-          `${META_API_BASE}/act_${accountId}/insights?filtering=${encodeURIComponent(filtering)}&breakdowns=publisher_platform,platform_position&fields=${baseFields}&time_range=${encodeURIComponent(timeRange)}&level=ad&action_attribution_windows=["28d_click","1d_view"]`,
+          `${META_API_BASE}/${accountId}/insights?filtering=${encodeURIComponent(filtering)}&breakdowns=publisher_platform,platform_position&fields=${baseFields}&time_range=${encodeURIComponent(timeRange)}&level=ad&action_attribution_windows=["28d_click","1d_view"]`,
           token,
         ),
         // Video retention curve
@@ -122,13 +122,23 @@ export async function GET(request: NextRequest) {
       for (const row of ageGenderResult.value.data) {
         const spend = parseFloat(row.spend || "0");
         const purchaseValue = extractActionValue(row.action_values, "purchase");
+
+        // Prefer Meta's purchase_roas if available, fall back to manual calculation
+        let roas: number | null = null;
+        const purchaseRoas = row.purchase_roas;
+        if (Array.isArray(purchaseRoas) && purchaseRoas.length > 0) {
+          roas = Math.round(parseFloat(purchaseRoas[0].value || "0") * 100) / 100;
+        } else if (spend > 0 && purchaseValue > 0) {
+          roas = Math.round((purchaseValue / spend) * 100) / 100;
+        }
+
         ageGender.push({
           age: row.age ?? "unknown",
           gender: row.gender ?? "unknown",
           spend: Math.round(spend * 100) / 100,
           impressions: parseInt(row.impressions || "0", 10),
           purchases: extractActionValue(row.actions, "purchase"),
-          roas: spend > 0 ? Math.round((purchaseValue / spend) * 100) / 100 : null,
+          roas,
         });
       }
     }
@@ -145,13 +155,21 @@ export async function GET(request: NextRequest) {
           PLACEMENT_LABELS[`${platform}|${position}`] ??
           `${platform} ${position}`.replace(/_/g, " ");
 
+        let placementRoas: number | null = null;
+        const purchaseRoas = row.purchase_roas;
+        if (Array.isArray(purchaseRoas) && purchaseRoas.length > 0) {
+          placementRoas = Math.round(parseFloat(purchaseRoas[0].value || "0") * 100) / 100;
+        } else if (spend > 0 && purchaseValue > 0) {
+          placementRoas = Math.round((purchaseValue / spend) * 100) / 100;
+        }
+
         placements.push({
           platform,
           position,
           label,
           spend: Math.round(spend * 100) / 100,
           impressions: parseInt(row.impressions || "0", 10),
-          roas: spend > 0 ? Math.round((purchaseValue / spend) * 100) / 100 : null,
+          roas: placementRoas,
         });
       }
     }
@@ -186,8 +204,13 @@ export async function GET(request: NextRequest) {
       video_retention: videoRetention,
     };
 
-    // Cache the result
-    cache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL });
+    console.log(`[ad-insights] ad=${adId} age_gender=${ageGender.length} placements=${placements.length}`);
+
+    // Only cache if we got meaningful data — empty results may be due to rate limiting
+    const hasData = ageGender.length > 0 || placements.length > 0 || videoRetention !== null;
+    if (hasData) {
+      cache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL });
+    }
 
     return NextResponse.json(result);
   } catch (error) {

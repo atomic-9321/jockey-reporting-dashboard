@@ -326,6 +326,7 @@ export default function AdsLibraryPage() {
               ad={ad}
               metrics={metrics}
               currency={currency}
+              region={region}
               onClick={() => setSelectedAd({ ad, metrics })}
             />
           ))}

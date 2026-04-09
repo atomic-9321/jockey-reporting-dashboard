@@ -1,4 +1,4 @@
-import type { Region, Currency } from "./types";
+import type { Region, Currency, EcoChannelKey, ChannelMetrics, WebshopMetrics } from "./types";
 
 // ── CW to Month (ISO-correct) ──
 
@@ -74,13 +74,87 @@ export const METRIC_SOURCE_MAP: Record<string, { source: MetricSource; label: st
   hold_rate: { source: "meta", label: "Hold Rate" },
   conversion_rate: { source: "meta", label: "Conversion Rate" },
   // Ecosystem ROAS (store-level)
-  store_revenue: { source: "ecosystem", label: "Store Revenue" },
-  store_orders: { source: "ecosystem", label: "Store Orders" },
-  blended_roas: { source: "ecosystem", label: "Blended ROAS" },
-  aov: { source: "ecosystem", label: "AOV" },
-  new_customers: { source: "ecosystem", label: "New Customers" },
-  returning_customers: { source: "ecosystem", label: "Returning Customers" },
+  "webshop.total_conversions": { source: "ecosystem", label: "Store Orders" },
+  "webshop.total_revenue": { source: "ecosystem", label: "Store Revenue" },
+  "webshop.total_cpa": { source: "ecosystem", label: "Store CPA" },
+  "webshop.profit": { source: "ecosystem", label: "Store Profit" },
+  "webshop.total_roas": { source: "ecosystem", label: "Blended ROAS" },
+  "webshop.aov": { source: "ecosystem", label: "Store AOV" },
+  // Ecosystem channels
+  "email.ad_spend": { source: "ecosystem", label: "Email Spend" },
+  "email.total_conversions": { source: "ecosystem", label: "Email Conversions" },
+  "email.total_revenue": { source: "ecosystem", label: "Email Revenue" },
+  "email.total_roas": { source: "ecosystem", label: "Email ROAS" },
+  "google.ad_spend": { source: "ecosystem", label: "Google Spend" },
+  "google.total_conversions": { source: "ecosystem", label: "Google Conversions" },
+  "google.total_revenue": { source: "ecosystem", label: "Google Revenue" },
+  "google.total_roas": { source: "ecosystem", label: "Google ROAS" },
 };
+
+// ── Ecosystem Channel Display Config ──
+
+export type MetricFormat = "currency" | "number" | "ratio" | "percent";
+
+export interface ChannelMetricConfig {
+  field: keyof ChannelMetrics | keyof WebshopMetrics;
+  label: string;
+  format: MetricFormat;
+}
+
+export interface ChannelConfig {
+  key: EcoChannelKey;
+  label: string;
+  color: "cyan" | "indigo" | "emerald" | "amber" | "rose" | "violet";
+  metrics: ChannelMetricConfig[];
+}
+
+const PAID_CHANNEL_METRICS: ChannelMetricConfig[] = [
+  { field: "ad_spend", label: "Ad Spend", format: "currency" },
+  { field: "total_conversions", label: "Conversions", format: "number" },
+  { field: "total_revenue", label: "Revenue", format: "currency" },
+  { field: "total_roas", label: "ROAS", format: "ratio" },
+  { field: "total_cpa", label: "CPA", format: "currency" },
+  { field: "profit", label: "Profit", format: "currency" },
+];
+
+export const ECOSYSTEM_CHANNELS: ChannelConfig[] = [
+  {
+    key: "webshop",
+    label: "Store / Webshop (Source of Truth)",
+    color: "emerald",
+    metrics: [
+      { field: "total_conversions", label: "Orders", format: "number" },
+      { field: "total_revenue", label: "Revenue", format: "currency" },
+      { field: "total_roas", label: "Blended ROAS", format: "ratio" },
+      { field: "total_cpa", label: "CPA", format: "currency" },
+      { field: "profit", label: "Profit", format: "currency" },
+      { field: "aov", label: "AOV", format: "currency" },
+    ],
+  },
+  {
+    key: "total_summary",
+    label: "All Channels (Total)",
+    color: "indigo",
+    metrics: PAID_CHANNEL_METRICS,
+  },
+  {
+    key: "email",
+    label: "Email Marketing",
+    color: "amber",
+    metrics: [
+      { field: "total_conversions", label: "Conversions", format: "number" },
+      { field: "total_revenue", label: "Revenue", format: "currency" },
+      { field: "pct_of_revenue", label: "% of Revenue", format: "percent" },
+      { field: "aov", label: "AOV", format: "currency" },
+    ],
+  },
+  {
+    key: "google",
+    label: "Google Ads",
+    color: "rose",
+    metrics: PAID_CHANNEL_METRICS,
+  },
+];
 
 // ── Positive Language ──
 

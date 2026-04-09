@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Lightbulb, Palette, Loader2, AlertTriangle } from "lucide-react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { Lightbulb, Palette, Loader2, AlertTriangle, Sparkles, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cwKeyToDateRange } from "@/lib/metrics";
 import type { Region, ReportInsightResult } from "@/lib/types";
 
 interface ReportInsightsProps {
@@ -15,17 +13,44 @@ interface ReportInsightsProps {
   campaignNames: string[];
 }
 
+/** Check if a calendar week is complete (today is past its Sunday). */
+function isWeekComplete(cwKey: string): boolean {
+  try {
+    const { end } = cwKeyToDateRange(cwKey);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today > end;
+  } catch {
+    return true; // If we can't parse, don't block
+  }
+}
+
 export function ReportInsights({
   region,
   period,
   periodType,
-  campaignNames,
 }: ReportInsightsProps) {
   const [data, setData] = useState<ReportInsightResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastKey = useRef<string>("");
+  const cache = useRef<Map<string, ReportInsightResult>>(new Map());
+
+  // Detect if the selected period is an incomplete week
+  const isIncomplete = useMemo(() => {
+    if (periodType === "weekly") return !isWeekComplete(period);
+    return false;
+  }, [period, periodType]);
 
   async function generate() {
+    const key = `${region}-${period}-${periodType}`;
+
+    // Return cached result — insights are generated once and never change
+    if (cache.current.has(key)) {
+      setData(cache.current.get(key)!);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -39,36 +64,51 @@ export function ReportInsights({
           mode: "report",
         }),
       });
-      if (!res.ok) throw new Error("Failed to generate insights");
+      if (res.status === 404) {
+        // Not generated yet — show "not available" message
+        setError("not_generated");
+        return;
+      }
+      if (!res.ok) throw new Error("Failed to load insights");
       const result: ReportInsightResult = await res.json();
+      cache.current.set(key, result);
       setData(result);
     } catch {
-      setError("Unable to generate insights. Please try again.");
+      setError("Insights temporarily unavailable. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  if (!data && !loading) {
+  // Auto-generate on mount and when region/period changes
+  useEffect(() => {
+    const key = `${region}-${period}-${periodType}`;
+    if (key !== lastKey.current) {
+      lastKey.current = key;
+      // If cached, set immediately — no loading flash
+      if (cache.current.has(key)) {
+        setData(cache.current.get(key)!);
+      } else if (isIncomplete) {
+        // Don't generate insights for incomplete weeks
+        setData(null);
+        setLoading(false);
+        setError(null);
+      } else {
+        setData(null);
+        generate();
+      }
+    }
+  }, [region, period, periodType, isIncomplete]);
+
+  // Show message for incomplete (current) week
+  if (isIncomplete) {
     return (
       <Card className="glass-card border-border/30 animate-fade-slide-up">
-        <CardContent className="py-8 flex flex-col items-center gap-4">
-          <div className="flex items-center gap-2 text-muted-foreground/60">
-            <Sparkles size={20} className="text-primary/50" />
-            <span className="text-sm">AI-powered insights for this report</span>
-          </div>
-          <Button
-            onClick={generate}
-            className="gap-2 shadow-[0_0_15px_oklch(0.78_0.17_195_/_15%)]"
-          >
-            <Sparkles size={14} />
-            Generate Insights
-          </Button>
-          {error && (
-            <p className="text-xs text-amber-400/80 flex items-center gap-1">
-              <AlertTriangle size={12} /> {error}
-            </p>
-          )}
+        <CardContent className="py-8 flex flex-col items-center gap-3">
+          <Clock size={20} className="text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground/60">
+            Weekly insights not yet available
+          </p>
         </CardContent>
       </Card>
     );
@@ -80,7 +120,32 @@ export function ReportInsights({
         <CardContent className="py-12 flex flex-col items-center gap-3">
           <Loader2 size={24} className="animate-spin text-primary" />
           <p className="text-sm text-muted-foreground/60">
-            Analyzing performance data with all strategy context...
+            Analyzing performance data...
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error === "not_generated" && !data) {
+    return (
+      <Card className="glass-card border-border/30 animate-fade-slide-up">
+        <CardContent className="py-8 flex flex-col items-center gap-3">
+          <Clock size={20} className="text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground/60">
+            Weekly insights not yet available
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <Card className="glass-card border-border/30 animate-fade-slide-up">
+        <CardContent className="py-8 flex flex-col items-center gap-3">
+          <p className="text-xs text-amber-400/80 flex items-center gap-1">
+            <AlertTriangle size={12} /> {error}
           </p>
         </CardContent>
       </Card>
@@ -98,9 +163,6 @@ export function ReportInsights({
             <div className="flex items-center gap-2">
               <Lightbulb size={16} className="text-primary" />
               <CardTitle className="text-base">Key Insights</CardTitle>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/20 text-primary/70">
-                AI
-              </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -157,15 +219,9 @@ export function ReportInsights({
             <div className="flex items-center gap-2">
               <Palette size={16} className="text-emerald-400" />
               <CardTitle className="text-base">Creative Recommendations</CardTitle>
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 border-emerald-500/20 text-emerald-400/70"
-              >
-                RAG
-              </Badge>
             </div>
             <p className="text-xs text-muted-foreground/50 font-mono">
-              Based on Creative Strategy Brain &middot; avatar &times; angle &times; product
+              Based on brand strategy &middot; avatar &times; angle &times; product
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -185,25 +241,6 @@ export function ReportInsights({
           </CardContent>
         </Card>
       )}
-
-      {/* Metadata */}
-      <p className="text-[10px] text-muted-foreground/30 text-right font-mono">
-        Generated {new Date(data.generated_at).toLocaleString()} &middot; {data.prompt_version}
-      </p>
-
-      {/* Regenerate */}
-      <div className="flex justify-center">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={generate}
-          disabled={loading}
-          className="gap-1.5 text-xs border-border/30"
-        >
-          <Sparkles size={12} />
-          Regenerate
-        </Button>
-      </div>
     </div>
   );
 }

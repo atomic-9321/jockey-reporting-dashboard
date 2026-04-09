@@ -21,12 +21,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.utils.date_utils import cw_to_date_range, get_calendar_week, cw_label
 from tools.utils.blob_client import download_json
+from tools.utils.insights import generate_ai_insights
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 TEMPLATE_PATH = PROJECT_ROOT / "tools" / "templates" / "weekly_report_template.html"
-OUTPUT_DIR = PROJECT_ROOT / ".tmp" / "reports"
+WEEKS_DIR = PROJECT_ROOT / "weeks"
 
 # ── Mapping helpers ───────────────────────────────────────────────────────────
 
@@ -173,19 +174,73 @@ def load_ecosystem_data(region: str) -> Optional[Dict]:
     return data
 
 
-def find_ecosystem_row(eco_data: Dict, cw_num: int) -> Optional[Dict]:
-    """Find the ecosystem row matching a specific calendar week number."""
+def find_ecosystem_row(eco_data: Dict, cw_num: int, year: Optional[int] = None) -> Optional[Dict]:
+    """Aggregate daily ecosystem rows that fall within a calendar week.
+
+    Args:
+        eco_data: Ecosystem data dict with "sheets" key containing daily rows.
+        cw_num: Calendar week number to match.
+        year: ISO year for the calendar week. Defaults to current year.
+
+    Returns:
+        Aggregated total_summary metrics dict, or None if no data found.
+    """
     if not eco_data or "sheets" not in eco_data:
         return None
 
-    for sheet_name, rows in eco_data["sheets"].items():
-        for row in rows:
-            cw_val = str(row.get("calendar_week", "")).strip()
-            # Match various formats: "14", "CW14", "Week 14", etc.
-            cw_match = re.search(r"(\d+)", cw_val)
-            if cw_match and int(cw_match.group(1)) == cw_num:
-                return row.get("metrics", {})
-    return None
+    if year is None:
+        year = date.today().year
+
+    start_date, end_date = cw_to_date_range(year, cw_num)
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
+
+    # Collect daily rows within the CW date range across all sheets
+    matching_rows = []
+    for sheet_name, sheet_data in eco_data["sheets"].items():
+        if not isinstance(sheet_data, dict):
+            continue
+        for row in sheet_data.get("daily", []):
+            row_date = row.get("date", "")
+            if start_str <= row_date <= end_str:
+                matching_rows.append(row)
+
+    if not matching_rows:
+        return None
+
+    # Aggregate total_summary metrics across matching days
+    additive_keys = ["ad_spend", "total_conversions", "total_revenue", "profit"]
+    totals: Dict[str, float] = {}
+
+    for row in matching_rows:
+        summary = row.get("total_summary", {})
+        if not summary:
+            continue
+        for key in additive_keys:
+            val = summary.get(key)
+            if val is not None:
+                try:
+                    totals[key] = totals.get(key, 0) + float(val)
+                except (ValueError, TypeError):
+                    pass
+
+    if not totals:
+        return None
+
+    # Compute derived metrics
+    revenue = totals.get("total_revenue", 0)
+    conversions = totals.get("total_conversions", 0)
+    spend = totals.get("ad_spend", 0)
+    profit = totals.get("profit", 0)
+
+    return {
+        "total_revenue": round(revenue, 2),
+        "total_conversions": round(conversions),
+        "total_cpa": round(spend / conversions, 2) if conversions > 0 else 0,
+        "profit": round(profit, 2),
+        "total_roas": round(revenue / spend, 2) if spend > 0 else 0,
+        "aov": round(revenue / conversions, 2) if conversions > 0 else 0,
+    }
 
 
 # ── Report data building ─────────────────────────────────────────────────────
@@ -325,7 +380,7 @@ def build_region_data(
     eco_data = load_ecosystem_data(region)
 
     # Build store section
-    eco_row = find_ecosystem_row(eco_data, cw) if eco_data else None
+    eco_row = find_ecosystem_row(eco_data, cw, year) if eco_data else None
     store = build_store_data(eco_row, cfg, end_date)
 
     # Build campaigns
@@ -352,6 +407,11 @@ def build_region_data(
     if not campaigns:
         logger.warning(f"No campaign data found for {region} in {cw_key}")
 
+    # Compute paid media revenue as % of total store revenue
+    total_paid_revenue = sum(c["purchaseValue"] for c in campaigns)
+    pct_of_revenue = round(total_paid_revenue / store["totalRevenue"] * 100, 1) if store["totalRevenue"] > 0 else 0.0
+    store["pctOfRevenue"] = pct_of_revenue
+
     return {
         "currency": cfg["currency"],
         "totalSpendRef": round(total_spend, 2),
@@ -359,34 +419,6 @@ def build_region_data(
         "campaigns": campaigns,
     }
 
-
-def try_fetch_ai_insights(
-    region_data: Dict,
-    region: str,
-    cw_key: str,
-) -> Optional[Dict]:
-    """Try to fetch AI insights from the dashboard API. Returns None on failure."""
-    import requests
-
-    base_url = os.getenv("DASHBOARD_BASE_URL", "http://localhost:3000")
-    url = f"{base_url}/api/insights"
-
-    try:
-        resp = requests.post(url, json={
-            "region": region.upper(),
-            "period": cw_key,
-            "period_type": "weekly",
-            "mode": "report",
-        }, timeout=60)
-
-        if resp.status_code == 200:
-            return resp.json()
-        else:
-            logger.warning(f"AI insights API returned {resp.status_code} for {region}/{cw_key}")
-            return None
-    except Exception as e:
-        logger.warning(f"Could not fetch AI insights (dashboard may not be running): {e}")
-        return None
 
 
 def inject_ai_insights(region_data: Dict, insights: Dict) -> None:
@@ -485,7 +517,7 @@ def generate_report(cw_key: str, regions: List[str] = None) -> str:
         region_data = build_region_data(region, cw_key, year, cw)
         if region_data:
             # Try AI insights, fall back to templates
-            insights = try_fetch_ai_insights(region_data, region, cw_key)
+            insights = generate_ai_insights(region_data, region, cw_key, "weekly")
             if insights:
                 inject_ai_insights(region_data, insights)
                 logger.info(f"AI insights injected for {region.upper()}")
@@ -513,14 +545,16 @@ def generate_report(cw_key: str, regions: List[str] = None) -> str:
 
 
 def save_report(html: str, year: int, cw: int) -> Path:
-    """Save the report HTML to the output directory."""
+    """Save the report HTML to weeks/CW##_MonDD_MonDD_YYYY/."""
     start_date, end_date = cw_to_date_range(year, cw)
     start_str = start_date.strftime("%b%d")
     end_str = end_date.strftime("%b%d")
-    filename = f"Weekly_Report_CW{cw:02d}_{start_str}_{end_str}_{year}.html"
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / filename
+    week_folder = WEEKS_DIR / f"CW{cw:02d}_{start_str}_{end_str}_{year}"
+    week_folder.mkdir(parents=True, exist_ok=True)
+
+    filename = f"Weekly_Report_CW{cw:02d}_{start_str}_{end_str}_{year}.html"
+    output_path = week_folder / filename
     output_path.write_text(html, encoding="utf-8")
 
     return output_path

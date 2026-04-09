@@ -17,7 +17,7 @@ export function RegionToggle() {
             : "text-muted-foreground hover:text-foreground"
         )}
       >
-        EU
+        🇪🇺 EU
       </button>
       <button
         onClick={() => setRegion("UK")}
@@ -28,7 +28,7 @@ export function RegionToggle() {
             : "text-muted-foreground hover:text-foreground"
         )}
       >
-        UK
+        🇬🇧 UK
       </button>
     </div>
   );

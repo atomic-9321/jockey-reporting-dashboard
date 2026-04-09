@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { MobileNav } from "./MobileNav";
@@ -8,6 +9,12 @@ import { RegionContext, useRegionState } from "@/hooks/useRegion";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const regionState = useRegionState("EU");
+  const pathname = usePathname();
+
+  // Render login page without dashboard chrome
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
   return (
     <RegionContext.Provider value={regionState}>

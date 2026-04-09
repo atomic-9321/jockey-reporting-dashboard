@@ -111,10 +111,55 @@ export interface FunnelStep {
 
 // ── Ecosystem (Google Sheets) ──
 
-export interface EcosystemWeek {
-  calendar_week: string | null;
-  metrics: Record<string, number | string | null>;
-  raw: Record<string, unknown>;
+/** Metrics shared by all paid advertising channels */
+export interface ChannelMetrics {
+  ad_spend: number | null;
+  total_conversions: number | null;
+  total_revenue: number | null;
+  total_cpa: number | null;
+  profit: number | null;
+  total_roas: number | null;
+  aov: number | null;
+  pct_of_revenue: number | null;
+  pct_of_spend: number | null;
+}
+
+/** Webshop (Source of Truth) metrics — no ad_spend or % fields */
+export interface WebshopMetrics {
+  total_conversions: number | null;
+  total_revenue: number | null;
+  total_cpa: number | null;
+  profit: number | null;
+  total_roas: number | null;
+  aov: number | null;
+}
+
+export type EcoChannelKey =
+  | "webshop"
+  | "total_summary"
+  | "email"
+  | "meta"
+  | "google"
+  | "pinterest"
+  | "tiktok";
+
+/** A single row of ecosystem data (monthly or daily granularity) */
+export interface EcosystemPeriodRow {
+  period: string; // "2025-03" for monthly, "2025-03-15" for daily
+  period_label: string;
+  date_raw: string;
+  webshop: WebshopMetrics;
+  total_summary: ChannelMetrics;
+  email: ChannelMetrics;
+  meta: ChannelMetrics;
+  google: ChannelMetrics;
+  pinterest: ChannelMetrics;
+  tiktok: ChannelMetrics;
+}
+
+export interface EcosystemSheetData {
+  monthly: EcosystemPeriodRow[];
+  daily: EcosystemPeriodRow[];
 }
 
 export interface EcosystemData {
@@ -122,7 +167,8 @@ export interface EcosystemData {
   currency: Currency;
   spreadsheet_id: string;
   fetched_at: string;
-  sheets: Record<string, EcosystemWeek[]>;
+  channels: EcoChannelKey[];
+  sheets: Record<string, EcosystemSheetData>;
 }
 
 // ── Annotations ──

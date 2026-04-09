@@ -10,9 +10,14 @@ import type {
   AdMetrics,
   Campaign,
   CampaignMetrics,
+  ChannelMetrics,
+  EcoChannelKey,
+  EcosystemData,
+  EcosystemPeriodRow,
   FunnelStep,
   TopAd,
   AnomalyFlag,
+  WebshopMetrics,
 } from "./types";
 import { FUNNEL_STEPS, MIN_SPEND_THRESHOLD, TOP_ADS_COUNT, cwKeyToMonth } from "./constants";
 
@@ -358,4 +363,196 @@ export function getAvailableMonths(cws: string[]): string[] {
     months.add(cwKeyToMonth(cw));
   }
   return Array.from(months).sort();
+}
+
+// ── Ecosystem Data Processing ──
+
+/**
+ * Get all monthly rows from ecosystem data, merged across sheets.
+ * Prefers the main sheet (first sheet) over supplementary ones.
+ */
+function getAllMonthlyRows(ecosystem: EcosystemData): EcosystemPeriodRow[] {
+  const byPeriod = new Map<string, EcosystemPeriodRow>();
+  const sheetNames = Object.keys(ecosystem.sheets);
+
+  // Process in reverse order so the first (main) sheet wins on duplicates
+  for (let i = sheetNames.length - 1; i >= 0; i--) {
+    const sheet = ecosystem.sheets[sheetNames[i]];
+    if (!sheet?.monthly) continue;
+    for (const row of sheet.monthly) {
+      if (row.period) {
+        byPeriod.set(row.period, row);
+      }
+    }
+  }
+
+  return Array.from(byPeriod.values()).sort((a, b) =>
+    a.period.localeCompare(b.period)
+  );
+}
+
+/**
+ * Get all daily rows from ecosystem data, merged across sheets.
+ */
+function getAllDailyRows(ecosystem: EcosystemData): EcosystemPeriodRow[] {
+  const byDate = new Map<string, EcosystemPeriodRow>();
+  const sheetNames = Object.keys(ecosystem.sheets);
+
+  for (let i = sheetNames.length - 1; i >= 0; i--) {
+    const sheet = ecosystem.sheets[sheetNames[i]];
+    if (!sheet?.daily) continue;
+    for (const row of sheet.daily) {
+      // Daily rows use "date" field instead of "period"
+      const dateKey = (row as unknown as Record<string, unknown>).date as string || row.period;
+      if (dateKey) {
+        byDate.set(dateKey, { ...row, period: dateKey });
+      }
+    }
+  }
+
+  return Array.from(byDate.values()).sort((a, b) =>
+    a.period.localeCompare(b.period)
+  );
+}
+
+/** Check if an ecosystem row has any meaningful (non-null) data. */
+function hasEcosystemData(row: EcosystemPeriodRow): boolean {
+  const webshop = row.webshop;
+  if (!webshop) return false;
+  return Object.values(webshop).some((v) => v !== null && v !== undefined);
+}
+
+/** Look up ecosystem data for a specific month (e.g. "2025-03").
+ *  If the month has no data, falls back to the most recent month with data.
+ */
+export function getEcosystemForMonth(
+  ecosystem: EcosystemData | null,
+  monthKey: string
+): EcosystemPeriodRow | null {
+  if (!ecosystem) return null;
+  const rows = getAllMonthlyRows(ecosystem);
+
+  // Try exact match first
+  const exact = rows.find((r) => r.period === monthKey);
+  if (exact && hasEcosystemData(exact)) return exact;
+
+  // Fallback: most recent month with data that's <= monthKey
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].period <= monthKey && hasEcosystemData(rows[i])) {
+      return rows[i];
+    }
+  }
+
+  return null;
+}
+
+/** Look up ecosystem data for a CW by converting to its parent month. */
+export function getEcosystemForCW(
+  ecosystem: EcosystemData | null,
+  cwKey: string
+): EcosystemPeriodRow | null {
+  if (!ecosystem) return null;
+  const month = cwKeyToMonth(cwKey);
+  return getEcosystemForMonth(ecosystem, month);
+}
+
+/** Aggregate daily ecosystem rows within a date range. */
+export function aggregateEcosystemDaily(
+  ecosystem: EcosystemData | null,
+  startDate: Date,
+  endDate: Date
+): EcosystemPeriodRow | null {
+  if (!ecosystem) return null;
+
+  const start = startDate.toISOString().slice(0, 10);
+  const end = endDate.toISOString().slice(0, 10);
+
+  const dailyRows = getAllDailyRows(ecosystem);
+  const filtered = dailyRows.filter((r) => r.period >= start && r.period <= end);
+
+  if (filtered.length === 0) return null;
+
+  return aggregateEcosystemRows(filtered);
+}
+
+/** Sum multiple ecosystem rows, recomputing derived metrics. */
+function aggregateEcosystemRows(rows: EcosystemPeriodRow[]): EcosystemPeriodRow {
+  const channelKeys: EcoChannelKey[] = [
+    "webshop", "total_summary", "email", "meta", "google", "pinterest", "tiktok",
+  ];
+
+  const result: Record<string, Record<string, number | null>> = {};
+  for (const ch of channelKeys) {
+    result[ch] = {};
+  }
+
+  // Sum additive metrics
+  const additiveKeys = ["ad_spend", "total_conversions", "total_revenue", "profit"];
+
+  for (const row of rows) {
+    for (const ch of channelKeys) {
+      const channelData = row[ch] as unknown as Record<string, number | null> | undefined;
+      if (!channelData) continue;
+
+      for (const key of additiveKeys) {
+        if (key === "ad_spend" && ch === "webshop") continue; // webshop has no ad_spend
+        const val = channelData[key];
+        if (val !== null && val !== undefined && typeof val === "number") {
+          result[ch][key] = (result[ch][key] ?? 0) + val;
+        }
+      }
+    }
+  }
+
+  // Recompute derived metrics for each channel
+  for (const ch of channelKeys) {
+    const d = result[ch];
+    const spend = d.ad_spend ?? null;
+    const conversions = d.total_conversions ?? null;
+    const revenue = d.total_revenue ?? null;
+
+    d.total_cpa = safeDiv(ch === "webshop" ? revenue : spend, conversions)
+      ? Math.round(safeDiv(ch === "webshop" ? revenue : spend, conversions)! * 100) / 100
+      : null;
+    d.total_roas = safeDiv(revenue, spend)
+      ? Math.round(safeDiv(revenue, spend)! * 100) / 100
+      : null;
+    d.aov = safeDiv(revenue, conversions)
+      ? Math.round(safeDiv(revenue, conversions)! * 100) / 100
+      : null;
+    // pct fields don't make sense when aggregated
+    d.pct_of_revenue = null;
+    d.pct_of_spend = null;
+  }
+
+  return {
+    period: rows[0].period,
+    period_label: `${rows.length} days`,
+    date_raw: rows[0].date_raw,
+    webshop: result.webshop as unknown as WebshopMetrics,
+    total_summary: result.total_summary as unknown as ChannelMetrics,
+    email: result.email as unknown as ChannelMetrics,
+    meta: result.meta as unknown as ChannelMetrics,
+    google: result.google as unknown as ChannelMetrics,
+    pinterest: result.pinterest as unknown as ChannelMetrics,
+    tiktok: result.tiktok as unknown as ChannelMetrics,
+  };
+}
+
+/** Compute % change between two channel metric sets. */
+export function computeEcosystemChange(
+  current: Record<string, number | null>,
+  previous: Record<string, number | null>
+): Record<string, number | null> {
+  const changes: Record<string, number | null> = {};
+  for (const key of Object.keys(current)) {
+    const curr = current[key];
+    const prev = previous[key];
+    if (curr === null || prev === null || prev === 0) {
+      changes[key] = null;
+    } else {
+      changes[key] = Math.round(((curr - prev) / prev) * 10000) / 100;
+    }
+  }
+  return changes;
 }

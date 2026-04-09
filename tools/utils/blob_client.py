@@ -52,8 +52,12 @@ def upload_json(filename: str, data: Any) -> str:
                 f"https://blob.vercel-storage.com/{filename}",
                 headers={
                     "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
+                    "Content-Type": "application/octet-stream",
                     "x-api-version": "7",
+                    "x-content-type": "application/json",
+                    "x-vercel-blob-access": "private",
+                    "x-add-random-suffix": "0",
+                    "x-allow-overwrite": "1",
                 },
                 data=json_str,
             )
@@ -101,7 +105,10 @@ def download_json(filename: str) -> Optional[Any]:
 
             if blobs:
                 blob_url = blobs[0]["url"]
-                data_resp = requests.get(blob_url)
+                data_resp = requests.get(
+                    blob_url,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
                 data_resp.raise_for_status()
                 return data_resp.json()
         except Exception as e:

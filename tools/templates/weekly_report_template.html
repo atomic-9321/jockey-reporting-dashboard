@@ -175,7 +175,8 @@ function renderStore(){
    {l:"Total Conversions",v:st.totalConversions.toLocaleString("en-GB"),s:fmt(st.totalCPA,cur)+" CPA",a:"var(--vc)"},
    {l:"Store ROAS",v:st.totalROAS.toFixed(2)+"x",s:st.totalROAS>=2?"Strong performance":"",a:st.totalROAS>=2?"var(--green)":"var(--yellow)"},
    {l:"Store AOV",v:fmt(st.aov,cur),s:"Average order value",a:"var(--sc)"},
-   {l:"Store CPA",v:fmt(st.totalCPA,cur),s:"Cost per acquisition",a:"var(--txm)"}
+   {l:"Store CPA",v:fmt(st.totalCPA,cur),s:"Cost per acquisition",a:"var(--txm)"},
+   {l:"% of Revenue",v:(st.pctOfRevenue||0).toFixed(1)+"%",s:"Paid media share",a:"var(--vc)"}
   ].forEach(c=>{h+='<div class="store-card"><div class="s-bar" style="background:'+c.a+'"></div><div class="s-label">'+c.l+'</div><div class="s-value'+(c.b?" large":"")+'">'+c.v+'</div>'+(c.s?'<div class="s-sub">'+c.s+'</div>':'')+'</div>'});
   h+='</div></div>';
   document.getElementById("store-section").innerHTML=h;
@@ -204,7 +205,7 @@ if(isE){h+='<div class="card-detail"><div class="ds id-sec"><div class="st">Camp
 h+='</div></div><div class="ds"><div class="st">Performance Metrics</div><div class="mg">';
 [{l:"Spend",v:fmt(c.spend,cur),a:"var(--accent)"},{l:"Purchases",v:c.purchases,a:"var(--green)"},{l:"Purchase Value",v:fmt(c.purchaseValue,cur),a:"var(--yellow)"},{l:"ROAS",v:c.roas.toFixed(2)+"x",a:rc(c.roas)},{l:"Cost / Purchase",v:fmt(c.costPerPurchase,cur),a:"var(--vc)"},{l:"Avg Order Value",v:fmt(c.avgOrderValue,cur),a:"var(--sc)"},{l:"Frequency",v:c.frequency.toFixed(2),a:fa(c.frequency)},{l:"Spend Share",v:share+"%",a:"var(--txm)"}].forEach(m=>{h+='<div class="mt"><div class="tb" style="background:'+m.a+'"></div><div class="tl">'+m.l+'</div><div class="tv">'+m.v+'</div></div>'});
 h+='</div></div><div class="ds"><div class="st">Creative & Targeting</div><div class="cg"><div class="cb"><div class="cr"><div><div class="cf-l">Funnel Stage</div><span class="pill" style="background:'+f.bg+';color:'+f.fg+';border:1px solid '+f.bd+'">'+c.funnelStage+'</span></div><div><div class="cf-l">Ad Format Split</div><div class="cf-v">'+esc(c.adFormatSplit)+'</div></div><div><div class="cf-l">Frequency</div><span class="fv '+fc(c.frequency)+'">'+c.frequency.toFixed(2)+'</span></div></div></div><div class="cb"><div class="cf-l" style="margin-bottom:4px">Top Performing Ad</div><div class="ta-n">'+esc(c.topPerformingAd)+'</div></div></div></div>';
-h+='<div class="ds"><div class="ib"><div class="ib-l"><span>\ud83d\udca1</span> AI Insight</div><div class="ib-t">'+esc(c.insight)+'</div></div></div>';
+h+='<div class="ds"><div class="ib"><div class="ib-l"><span>\ud83d\udca1</span> Performance Insight</div><div class="ib-t">'+esc(c.insight)+'</div></div></div>';
 var steps=[{s:c.nextStep1,i:"\ud83c\udfaf",l:"Priority Action"},{s:c.nextStep2,i:"\u26a1",l:"Quick Win"},{s:c.nextStep3,i:"\ud83d\udd04",l:"Optimization"},{s:c.nextStep4,i:"\ud83d\udcc8",l:"Growth Lever"}];
 h+='<div class="ds" style="padding-bottom:16px"><div class="st">Recommended Next Steps</div><div class="sg">';
 steps.forEach(x=>{h+='<div class="scard"><div class="sh"><span class="si">'+x.i+'</span><span class="sty">'+x.l+'</span></div><div class="stx">'+esc(x.s)+'</div></div>'});

@@ -188,6 +188,8 @@ export async function buildReportSystemPrompt(): Promise<string> {
     productCatalog,
     kpiBenchmarks,
     funnelStrategy,
+    testingLog,
+    namingConventions,
   ] = await Promise.all([
     loadContextFile("brand-context.md"),
     loadContextFile("positive-language.md"),
@@ -196,6 +198,8 @@ export async function buildReportSystemPrompt(): Promise<string> {
     loadContextFile("02-product-catalog.md"),
     loadContextFile("03-kpi-benchmarks.md"),
     loadContextFile("05-funnel-strategy.md"),
+    loadContextFile("04-testing-log.md"),
+    loadContextFile("naming-conventions.md"),
   ]);
 
   return `You are the Jockey Reporting AI Agent. You analyze advertising performance data for Jockey EU and UK markets and provide strategic creative recommendations.
@@ -208,6 +212,8 @@ export async function buildReportSystemPrompt(): Promise<string> {
 4. **Use ONLY positive language.** Follow the positive language rules below exactly.
 5. **Be concise and actionable.** Each insight should be 1-2 sentences. Each recommendation should be specific and actionable.
 6. **Reference creative angles from the Creative Brain when making recommendations.** Use the angle names and strategies below.
+7. **Reference the Testing Log before suggesting next steps.** Never suggest a test that was already run unless results were inconclusive.
+8. **Use Naming Conventions to identify avatars, angles, and funnel stages from ad names.**
 
 ## Brand Context
 ${brandContext}
@@ -229,6 +235,12 @@ ${kpiBenchmarks}
 
 ## Funnel Strategy
 ${funnelStrategy}
+
+## Testing Log
+${testingLog}
+
+## Naming Conventions
+${namingConventions}
 
 ## Output Format
 You MUST respond with valid JSON in this exact structure:

@@ -68,6 +68,55 @@ def get_sheets_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def _parse_cell(value: Any) -> Any:
+    """Parse a single cell value: convert numeric strings, currencies, percentages."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    value = value.strip()
+    if value == "" or value == "-" or value == "--":
+        return None
+    if value.startswith("#"):  # #REF!, #DIV/0!, etc.
+        return None
+    try:
+        if value.endswith("%"):
+            return float(value.rstrip("%"))
+        if value.startswith(("$", "€", "£")):
+            return float(value[1:].replace(",", ""))
+        cleaned = value.replace(",", "")
+        f = float(cleaned)
+        return int(f) if f == int(f) else f
+    except ValueError:
+        return value  # Keep as string
+
+
+def read_sheet_raw(
+    spreadsheet_id: str,
+    range_name: str,
+) -> List[List[Any]]:
+    """Read a range from a Google Sheet and return as raw 2D list.
+
+    Each inner list is one row. Cell values are parsed via _parse_cell().
+    Useful for sheets with merged/multi-row headers where dict conversion
+    would lose columns.
+    """
+    service = get_sheets_service()
+
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_name)
+        .execute()
+    )
+
+    values = result.get("values", [])
+    parsed = []
+    for row in values:
+        parsed.append([_parse_cell(cell) for cell in row])
+    return parsed
+
+
 def validate_schema(headers: List[str], expected_columns: List[str]) -> bool:
     """Validate that the sheet has the expected column headers.
 
@@ -126,27 +175,7 @@ def read_sheet(
         row_dict = {}
         for i, header in enumerate(headers):
             value = row_values[i] if i < len(row_values) else None
-            # Try to parse numbers
-            if value is not None and isinstance(value, str):
-                value = value.strip()
-                if value == "":
-                    value = None
-                else:
-                    try:
-                        # Handle percentage strings
-                        if value.endswith("%"):
-                            value = float(value.rstrip("%"))
-                        # Handle currency strings
-                        elif value.startswith(("$", "€", "£")):
-                            value = float(value[1:].replace(",", ""))
-                        else:
-                            value = float(value.replace(",", ""))
-                            if value == int(value):
-                                value = int(value)
-                    except ValueError:
-                        pass  # Keep as string
-
-            row_dict[header.strip()] = value
+            row_dict[header.strip()] = _parse_cell(value)
         rows.append(row_dict)
 
     return rows

@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "**.fbcdn.net" },
       { protocol: "https", hostname: "**.facebook.com" },
+      { protocol: "https", hostname: "**.cdninstagram.com" },
     ],
   },
 };

@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Users, LayoutGrid, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/constants";
 import { getFunnelStageColor } from "@/lib/ad-name-parser";
@@ -107,6 +108,8 @@ export function AdInsightsModal({
                   fill
                   className="object-cover"
                   sizes="80px"
+                  quality={95}
+                  unoptimized
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground/40 text-xs">
@@ -159,7 +162,7 @@ export function AdInsightsModal({
           </div>
         </SheetHeader>
 
-        <div className="space-y-6 p-4">
+        <div className="space-y-5 px-4 pb-6">
           {loading && <LoadingSkeleton />}
           {error && (
             <div className="text-center text-muted-foreground/50 py-8 text-sm">
@@ -169,12 +172,16 @@ export function AdInsightsModal({
           {data && !loading && (
             <>
               <AgeGenderSection data={data.age_gender} currency={currency} />
+              <div className="border-t border-border/10" />
               <PlacementSection
                 data={data.placements}
                 currency={currency}
               />
               {isVideo && data.video_retention && (
-                <RetentionSection data={data.video_retention} />
+                <>
+                  <div className="border-t border-border/10" />
+                  <RetentionSection data={data.video_retention} />
+                </>
               )}
             </>
           )}
@@ -197,11 +204,22 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({
+  children,
+  icon,
+}: {
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
   return (
-    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 mb-3">
-      {children}
-    </h3>
+    <div className="flex items-center gap-2 mb-3">
+      {icon && (
+        <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary/60">
+          {icon}
+        </div>
+      )}
+      <h3 className="text-sm font-semibold text-foreground/80">{children}</h3>
+    </div>
   );
 }
 
@@ -230,16 +248,16 @@ function AgeGenderSection({
   if (!data.length) {
     return (
       <div>
-        <SectionTitle>Age & Gender Breakdown</SectionTitle>
+        <SectionTitle icon={<Users size={14} />}>Age & Gender Breakdown</SectionTitle>
         <p className="text-sm text-muted-foreground/40">Insufficient data</p>
       </div>
     );
   }
 
-  // Group by age, then split male/female
+  // Group by age, then split male/female with weighted ROAS
   const ageMap = new Map<
     string,
-    { male: number; female: number; total: number; roas: number | null }
+    { male: number; female: number; total: number; totalPurchaseVal: number }
   >();
 
   for (const row of data) {
@@ -247,75 +265,71 @@ function AgeGenderSection({
       male: 0,
       female: 0,
       total: 0,
-      roas: null,
+      totalPurchaseVal: 0,
     };
     const spend = row.spend;
     if (row.gender === "male") existing.male += spend;
     else if (row.gender === "female") existing.female += spend;
     existing.total += spend;
+    existing.totalPurchaseVal += row.roas !== null ? spend * row.roas : 0;
     ageMap.set(row.age, existing);
-  }
-
-  // Compute ROAS per age group
-  for (const row of data) {
-    const group = ageMap.get(row.age);
-    if (group && row.roas !== null) {
-      // Weighted average approximation — take the row's roas if it's the only one
-      group.roas = row.roas;
-    }
   }
 
   const ages = Array.from(ageMap.entries()).sort((a, b) =>
     a[0].localeCompare(b[0]),
   );
-  const maxSpend = Math.max(...ages.map(([, v]) => v.total), 1);
 
   return (
     <div>
-      <SectionTitle>Age & Gender Breakdown</SectionTitle>
+      <SectionTitle icon={<Users size={14} />}>Age & Gender Breakdown</SectionTitle>
       <div className="glass-card rounded-lg border border-border/20 overflow-hidden">
-        {/* Header */}
-        <div className="grid grid-cols-[80px_1fr_1fr_80px_60px] gap-2 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono border-b border-border/15">
-          <span>Age</span>
-          <span>Male Spend</span>
-          <span>Female Spend</span>
-          <span className="text-right">Total</span>
-          <span className="text-right">ROAS</span>
-        </div>
-        {/* Rows */}
-        {ages.map(([age, vals]) => (
-          <div
-            key={age}
-            className="grid grid-cols-[80px_1fr_1fr_80px_60px] gap-2 px-3 py-2.5 border-b border-border/10 last:border-0 items-center"
-          >
-            <span className="text-xs font-medium">{age}</span>
-            <SpendBar
-              value={vals.male}
-              max={maxSpend}
-              currency={currency}
-              color="bg-indigo-500/60"
-            />
-            <SpendBar
-              value={vals.female}
-              max={maxSpend}
-              currency={currency}
-              color="bg-rose-400/60"
-            />
-            <span className="text-xs tabular-nums text-right font-medium">
-              {formatCurrency(vals.total, currency)}
-            </span>
-            <span
-              className={cn(
-                "text-xs tabular-nums text-right font-semibold",
-                vals.roas !== null && vals.roas >= 2
-                  ? "text-emerald-400"
-                  : "text-muted-foreground/60",
-              )}
-            >
-              {vals.roas !== null ? `${vals.roas}x` : "—"}
-            </span>
-          </div>
-        ))}
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border/15">
+              <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono font-normal px-3 py-2 w-[72px]">Age</th>
+              <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono font-normal px-3 py-2">Male</th>
+              <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono font-normal px-3 py-2">Female</th>
+              <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono font-normal px-3 py-2">Total</th>
+              <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground/50 font-mono font-normal px-3 py-2 w-[60px]">ROAS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ages.map(([age, vals]) => {
+              const roas = vals.total > 0
+                ? Math.round((vals.totalPurchaseVal / vals.total) * 100) / 100
+                : null;
+              return (
+                <tr
+                  key={age}
+                  className="border-b border-border/10 last:border-0"
+                >
+                  <td className="text-xs font-medium px-3 py-2.5">{age}</td>
+                  <td className="text-xs tabular-nums text-right px-3 py-2.5 text-indigo-400/80">
+                    {formatCurrency(vals.male, currency)}
+                  </td>
+                  <td className="text-xs tabular-nums text-right px-3 py-2.5 text-rose-400/80">
+                    {formatCurrency(vals.female, currency)}
+                  </td>
+                  <td className="text-xs tabular-nums text-right font-medium px-3 py-2.5">
+                    {formatCurrency(vals.total, currency)}
+                  </td>
+                  <td
+                    className={cn(
+                      "text-xs tabular-nums text-right font-semibold px-3 py-2.5",
+                      roas !== null && roas >= 2
+                        ? "text-emerald-400"
+                        : roas !== null && roas >= 1
+                          ? "text-amber-400/80"
+                          : "text-muted-foreground/50",
+                    )}
+                  >
+                    {roas !== null && roas > 0 ? `${roas}x` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -360,7 +374,7 @@ function PlacementSection({
   if (!data.length) {
     return (
       <div>
-        <SectionTitle>Placement Breakdown</SectionTitle>
+        <SectionTitle icon={<LayoutGrid size={14} />}>Placement Breakdown</SectionTitle>
         <p className="text-sm text-muted-foreground/40">Insufficient data</p>
       </div>
     );
@@ -378,7 +392,7 @@ function PlacementSection({
 
   return (
     <div>
-      <SectionTitle>Placement Breakdown</SectionTitle>
+      <SectionTitle icon={<LayoutGrid size={14} />}>Placement Breakdown</SectionTitle>
       <div className="glass-card rounded-lg border border-border/20 p-4">
         {/* Legend */}
         <div className="flex gap-4 mb-3 text-[10px] text-muted-foreground/50">
@@ -472,7 +486,7 @@ function RetentionSection({
   if (!data.curve.length) {
     return (
       <div>
-        <SectionTitle>Video Retention</SectionTitle>
+        <SectionTitle icon={<Play size={14} />}>Video Retention</SectionTitle>
         <p className="text-sm text-muted-foreground/40">
           No retention data available
         </p>
@@ -504,7 +518,7 @@ function RetentionSection({
 
   return (
     <div>
-      <SectionTitle>Video Retention</SectionTitle>
+      <SectionTitle icon={<Play size={14} />}>Video Retention</SectionTitle>
       <div className="glass-card rounded-lg border border-border/20 p-4">
         <div className="flex gap-4 mb-3 text-[10px] text-muted-foreground/50">
           <span>

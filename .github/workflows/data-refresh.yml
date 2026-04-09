@@ -4,6 +4,8 @@ on:
   schedule:
     # Every 6 hours: midnight, 6am, noon, 6pm UTC
     - cron: "0 0,6,12,18 * * *"
+    # Monday 5am UTC (7am CET) — trigger weekly insight generation
+    - cron: "0 5 * * 1"
   workflow_dispatch:
     inputs:
       region:
@@ -60,9 +62,9 @@ jobs:
 
   weekly-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # Generate weekly report every Monday at 8am UTC
-    if: github.event.schedule == '0 0,6,12,18 * * *' && (github.event_name == 'schedule')
+    timeout-minutes: 15
+    # Run on Monday cron triggers only
+    if: github.event_name == 'schedule'
     needs: refresh
 
     steps:
@@ -77,29 +79,59 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client facebook-business
+          pip install requests python-dotenv google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client facebook-business anthropic
 
-      - name: Check if Monday and generate weekly report
+      - name: Generate weekly report and insights on Monday
         env:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DASHBOARD_BASE_URL: ${{ secrets.DASHBOARD_BASE_URL }}
         run: |
           DAY_OF_WEEK=$(date +%u)
-          HOUR=$(date -u +%H)
-          # Only run on Mondays at the 6am UTC slot (closest to 8am CET)
-          if [ "$DAY_OF_WEEK" = "1" ] && [ "$HOUR" = "06" ]; then
-            # Calculate previous week's CW
-            PREV_MONDAY=$(date -d "last monday - 7 days" +%Y-%m-%d 2>/dev/null || date -v-1w -v-mon +%Y-%m-%d)
-            CW=$(date -d "$PREV_MONDAY" +%G-CW%V 2>/dev/null || python3 -c "
+          # Only run on Mondays
+          if [ "$DAY_OF_WEEK" != "1" ]; then
+            echo "Not Monday — skipping weekly report generation"
+            exit 0
+          fi
+
+          # Calculate previous week's CW
+          CW=$(python3 -c "
           from datetime import date, timedelta
           today = date.today()
           last_monday = today - timedelta(days=today.weekday() + 7)
           iso = last_monday.isocalendar()
           print(f'{iso[0]}-CW{iso[1]:02d}')
           ")
-            echo "Generating weekly report for $CW"
-            python tools/generate_weekly_report.py --cw "$CW"
-          else
-            echo "Not Monday 6am UTC — skipping weekly report generation"
-          fi
+          echo "Generating weekly report for $CW"
+
+          # Generate HTML report (includes AI insights for the report)
+          python tools/generate_weekly_report.py --cw "$CW"
+
+          # Pre-generate dashboard insights for both regions and save to Blob
+          echo "Pre-generating dashboard insights for $CW"
+          python3 -c "
+          import json, os, sys
+          sys.path.insert(0, '.')
+          from tools.generate_weekly_report import build_region_data, parse_cw_key
+          from tools.utils.insights import generate_ai_insights
+          from tools.utils.blob_client import upload_json
+
+          year, cw = parse_cw_key('$CW')
+          for region in ['uk', 'eu']:
+              print(f'Generating dashboard insights for {region.upper()} {\"$CW\"}')
+              region_data = build_region_data(region, '$CW', year, cw)
+              if not region_data:
+                  print(f'  No data for {region.upper()}')
+                  continue
+              insights = generate_ai_insights(region_data, region, '$CW', 'weekly')
+              if insights:
+                  insights['generated_at'] = __import__('datetime').datetime.now().isoformat()
+                  insights['region'] = region.upper()
+                  insights['period'] = '$CW'
+                  insights['prompt_version'] = 'v1'
+                  filename = f'insights_{region.upper()}_$CW_report.json'
+                  upload_json(filename, insights)
+                  print(f'  Saved {filename} to Blob')
+              else:
+                  print(f'  AI insights failed for {region.upper()}')
+          "

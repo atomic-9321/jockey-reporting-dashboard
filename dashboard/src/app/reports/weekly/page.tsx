@@ -9,23 +9,30 @@ import { KPICard } from "@/components/charts/KPICard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRegion } from "@/hooks/useRegion";
+import { EcosystemOverview } from "@/components/ecosystem/ChannelSection";
 import {
   formatCurrency,
   formatNumber,
   formatPercent,
   CURRENCY_SYMBOL,
+  ECOSYSTEM_CHANNELS,
+  cwKeyToMonth,
 } from "@/lib/constants";
 import {
   aggregateMetrics,
   buildFunnel,
   getAvailableCWs,
   computeWoWChange,
+  getEcosystemForCW,
+  aggregateEcosystemDaily,
+  cwKeyToDateRange,
 } from "@/lib/metrics";
-import type { CampaignData, Campaign } from "@/lib/types";
+import type { CampaignData, Campaign, EcosystemData } from "@/lib/types";
 
 export default function WeeklyReportPage() {
   const { region, currency } = useRegion();
   const [data, setData] = useState<CampaignData | null>(null);
+  const [ecosystem, setEcosystem] = useState<EcosystemData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
 
@@ -35,6 +42,7 @@ export default function WeeklyReportPage() {
       .then((r) => r.json())
       .then((d) => {
         setData(d.campaigns);
+        setEcosystem(d.ecosystem);
         const cws = getAvailableCWs(d.campaigns?.campaigns || []);
         setSelectedWeek(cws[cws.length - 1] || null);
         setLoading(false);
@@ -120,7 +128,10 @@ export default function WeeklyReportPage() {
         onSelect={setSelectedWeek}
       />
 
-      {/* KPIs */}
+      {/* Meta KPIs */}
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground/80">Meta</h3>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <KPICard label="Investment" value={formatCurrency(weekMetrics.spend, currency)} trend={wowChanges?.spend ?? null} color="indigo" delay={0} />
         <KPICard label="Revenue" value={formatCurrency(weekMetrics.purchase_value, currency)} trend={wowChanges?.purchase_value ?? null} color="emerald" delay={75} />
@@ -153,6 +164,39 @@ export default function WeeklyReportPage() {
           <MetricsTable campaigns={campaignRows} currency={currency} />
         </CardContent>
       </Card>
+
+      {/* Ecosystem Channel Data */}
+      {(() => {
+        // Try daily aggregation first, fallback to monthly
+        const cwRange = cwKeyToDateRange(selectedWeek);
+        const dailyEco = aggregateEcosystemDaily(ecosystem, cwRange.start, cwRange.end);
+        const monthlyEco = getEcosystemForCW(ecosystem, selectedWeek);
+        const ecoRow = dailyEco || monthlyEco;
+
+        // Previous period for comparison
+        const prevEcoRow = previousCW ? getEcosystemForCW(ecosystem, previousCW) : null;
+        const ecoLabel = dailyEco ? selectedWeek : monthlyEco ? `${cwKeyToMonth(selectedWeek)} (monthly)` : "";
+
+        if (!ecoRow) return null;
+        return (
+          <div className="space-y-2 animate-fade-slide-up delay-375">
+            <div className="flex items-center gap-2 pt-2">
+              <div className="h-px flex-1 bg-border/30" />
+              <span className="text-xs text-muted-foreground/50 font-mono uppercase tracking-wider">
+                Ecosystem &middot; {ecoLabel}
+              </span>
+              <div className="h-px flex-1 bg-border/30" />
+            </div>
+            <EcosystemOverview
+              row={ecoRow}
+              previousRow={prevEcoRow}
+              currency={currency}
+              channels={ECOSYSTEM_CHANNELS}
+              periodLabel={ecoLabel}
+            />
+          </div>
+        );
+      })()}
 
       {/* AI Insights + Creative Recommendations */}
       <ReportInsights
