@@ -36,13 +36,25 @@ function extractActionValue(
 const cache = new Map<string, { data: AdInsightsBreakdown; expires: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 
-async function metaFetch(url: string, token: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function metaFetch(url: string, token: string, retries = 2): Promise<any> {
   const sep = url.includes("?") ? "&" : "?";
   const resp = await fetch(`${url}${sep}access_token=${token}`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!resp.ok) {
     const err = await resp.text();
+    // Retry on rate limit (code 17) with exponential backoff
+    if (resp.status === 400 && retries > 0) {
+      try {
+        const parsed = JSON.parse(err);
+        if (parsed?.error?.code === 17) {
+          const delay = (3 - retries) * 3000; // 3s, 6s
+          await new Promise((r) => setTimeout(r, delay));
+          return metaFetch(url, token, retries - 1);
+        }
+      } catch { /* not JSON, fall through */ }
+    }
     throw new Error(`Meta API ${resp.status}: ${err}`);
   }
   return resp.json();
