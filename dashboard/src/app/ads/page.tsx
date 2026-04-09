@@ -19,6 +19,7 @@ import type {
   AwarenessLevel,
   Ad,
   AdMetrics,
+  AdAgeGenderBreakdown,
   Campaign,
 } from "@/lib/types";
 
@@ -73,6 +74,7 @@ export default function AdsLibraryPage() {
   const [allCWs, setAllCWs] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [selectedAd, setSelectedAd] = useState<{ ad: Ad; metrics: AdMetrics } | null>(null);
+  const [demographics, setDemographics] = useState<Record<string, AdAgeGenderBreakdown[]>>({});
 
   useEffect(() => {
     setLoading(true);
@@ -90,6 +92,14 @@ export default function AdsLibraryPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, [region]);
+
+  // Batch-fetch demographics for all ads (single Meta API call)
+  useEffect(() => {
+    fetch(`/api/ad-demographics?region=${region.toLowerCase()}`)
+      .then((r) => r.ok ? r.json() : {})
+      .then((data: Record<string, AdAgeGenderBreakdown[]>) => setDemographics(data))
+      .catch(() => setDemographics({}));
   }, [region]);
 
   // Compute filtered CW keys based on date range
@@ -327,6 +337,7 @@ export default function AdsLibraryPage() {
               metrics={metrics}
               currency={currency}
               region={region}
+              demographics={demographics[ad.ad_id] ?? null}
               onClick={() => setSelectedAd({ ad, metrics })}
             />
           ))}

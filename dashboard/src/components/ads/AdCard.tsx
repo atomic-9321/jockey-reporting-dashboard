@@ -1,6 +1,6 @@
 "use client";
 
-import { Image as ImageIcon, PlayCircle, Layers, AlertTriangle } from "lucide-react";
+import { Image as ImageIcon, PlayCircle, Layers, AlertTriangle, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Ad, AdMetrics, Currency, Region } from "@/lib/types";
+import type { Ad, AdMetrics, Currency, Region, AdAgeGenderBreakdown } from "@/lib/types";
 import { formatCurrency, formatPercent } from "@/lib/constants";
 import { getFunnelStageColor, getAwarenessColor, getTypeColor } from "@/lib/ad-name-parser";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ interface AdCardProps {
   metrics: AdMetrics;
   currency: Currency;
   region: Region;
+  demographics?: AdAgeGenderBreakdown[] | null;
   onClick?: () => void;
 }
 
@@ -44,7 +45,7 @@ function FormatIcon({ format, size = 14 }: { format: string; size?: number }) {
   }
 }
 
-export function AdCard({ ad, metrics, currency, region, onClick }: AdCardProps) {
+export function AdCard({ ad, metrics, currency, region, demographics, onClick }: AdCardProps) {
   const isVideo = ad.parsed_name.format === "video";
   const format = ad.parsed_name.format;
   const stage = ad.parsed_name.funnel_stage;
@@ -212,8 +213,161 @@ export function AdCard({ ad, metrics, currency, region, onClick }: AdCardProps) 
           )}
         </div>
 
+        {/* Age & Gender Spend Breakdown */}
+        <AgeGenderMini data={demographics ?? null} currency={currency} />
       </CardContent>
     </Card>
+  );
+}
+
+function AgeGenderMini({
+  data,
+  currency,
+}: {
+  data: AdAgeGenderBreakdown[] | null;
+  currency: Currency;
+}) {
+  if (!data || data.length === 0) return null;
+
+  // Aggregate spend + purchases by age group, split by gender
+  type AgeGroup = {
+    male: number; female: number; total: number;
+    malePurchaseVal: number; femalePurchaseVal: number; totalPurchaseVal: number;
+  };
+  const ageMap = new Map<string, AgeGroup>();
+  for (const row of data) {
+    const existing = ageMap.get(row.age) ?? {
+      male: 0, female: 0, total: 0,
+      malePurchaseVal: 0, femalePurchaseVal: 0, totalPurchaseVal: 0,
+    };
+    const purchaseVal = row.roas !== null ? row.spend * row.roas : 0;
+    if (row.gender === "male") {
+      existing.male += row.spend;
+      existing.malePurchaseVal += purchaseVal;
+    } else if (row.gender === "female") {
+      existing.female += row.spend;
+      existing.femalePurchaseVal += purchaseVal;
+    }
+    existing.total += row.spend;
+    existing.totalPurchaseVal += purchaseVal;
+    ageMap.set(row.age, existing);
+  }
+
+  const sorted = Array.from(ageMap.entries())
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 4);
+
+  const maxSpend = Math.max(...sorted.map(([, v]) => v.total), 1);
+
+  let bestRoasAge = "";
+  let bestRoas = 0;
+  for (const [age, vals] of sorted) {
+    const roas = vals.total > 0 ? vals.totalPurchaseVal / vals.total : 0;
+    if (roas > bestRoas) { bestRoas = roas; bestRoasAge = age; }
+  }
+
+  const grandTotal = sorted.reduce((s, [, v]) => s + v.total, 0);
+  const grandMale = sorted.reduce((s, [, v]) => s + v.male, 0);
+  const grandFemale = sorted.reduce((s, [, v]) => s + v.female, 0);
+  const maleRatio = grandTotal > 0 ? Math.round((grandMale / grandTotal) * 100) : 0;
+  const femaleRatio = grandTotal > 0 ? Math.round((grandFemale / grandTotal) * 100) : 0;
+
+  return (
+    <div className="pt-3 border-t border-border/20">
+      <div className="rounded-lg bg-gradient-to-b from-muted/8 to-transparent border border-border/10 p-2.5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <Users size={10} className="text-primary/50" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/50">
+              Demographics
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5 text-[9px] font-mono text-muted-foreground/40">
+            <span className="inline-flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+              M {maleRatio}%
+            </span>
+            <span className="text-border/30 mx-0.5">/</span>
+            <span className="inline-flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+              F {femaleRatio}%
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[36px_1fr_44px_32px] gap-1.5 items-center mb-1 px-0.5">
+          <span className="text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono">Age</span>
+          <span className="text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono">Spend</span>
+          <span className="text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono text-right">Amt</span>
+          <span className="text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono text-right">ROAS</span>
+        </div>
+
+        <div className="space-y-0.5">
+          {sorted.map(([age, vals], idx) => {
+            const roas = vals.total > 0
+              ? Math.round((vals.totalPurchaseVal / vals.total) * 100) / 100
+              : 0;
+            const malePct = vals.total > 0 ? (vals.male / vals.total) * 100 : 0;
+            const barScale = vals.total / maxSpend;
+            const isBest = age === bestRoasAge && bestRoas >= 1;
+
+            return (
+              <div
+                key={age}
+                className={cn(
+                  "grid grid-cols-[36px_1fr_44px_32px] gap-1.5 items-center rounded-md px-0.5 py-[5px] transition-all duration-300",
+                  isBest
+                    ? "bg-emerald-500/10 shadow-[inset_0_0_0_1px_oklch(0.75_0.19_155_/_0.15)]"
+                    : idx % 2 === 0 ? "bg-transparent" : "bg-muted/3"
+                )}
+              >
+                <span className={cn(
+                  "text-[10px] font-semibold font-mono tabular-nums",
+                  isBest ? "text-emerald-400/90" : "text-foreground/60"
+                )}>
+                  {age}
+                </span>
+
+                <div className="h-[7px] bg-muted/8 rounded-full overflow-hidden flex">
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-700 ease-out",
+                      isBest ? "bg-indigo-400/90" : "bg-indigo-400/60"
+                    )}
+                    style={{ width: `${(malePct / 100) * barScale * 100}%` }}
+                    title={`Male: ${formatCurrency(vals.male, currency)}`}
+                  />
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-700 ease-out",
+                      isBest ? "bg-rose-400/90" : "bg-rose-400/60"
+                    )}
+                    style={{ width: `${((100 - malePct) / 100) * barScale * 100}%` }}
+                    title={`Female: ${formatCurrency(vals.female, currency)}`}
+                  />
+                </div>
+
+                <span className="text-[10px] tabular-nums text-muted-foreground/50 text-right font-mono">
+                  {formatCurrency(vals.total, currency)}
+                </span>
+
+                <span
+                  className={cn(
+                    "text-[10px] font-bold tabular-nums text-right",
+                    roas >= 2 ? "text-emerald-400" :
+                    roas >= 1 ? "text-amber-400/80" :
+                    roas > 0 ? "text-muted-foreground/40" :
+                    "text-muted-foreground/20"
+                  )}
+                >
+                  {roas > 0 ? `${roas}x` : "\u2014"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
