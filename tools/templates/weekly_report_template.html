@@ -75,6 +75,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.8px;margin-bottom:2px}
 .sd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .sd-strong{background:var(--green);box-shadow:0 0 7px rgba(52,211,153,.35)}
 .sd-moderate{background:var(--yellow);box-shadow:0 0 7px rgba(251,191,36,.35)}
+.sd-underperforming{background:#e74c3c;box-shadow:0 0 7px rgba(231,76,60,.35)}
 .sd-inactive{background:var(--slate);box-shadow:0 0 7px rgba(90,91,99,.35)}
 .card-info{flex:1 1 160px;min-width:120px}
 .card-name{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px}
@@ -86,7 +87,7 @@ h1{font-size:25px;font-weight:700;letter-spacing:-.8px;margin-bottom:2px}
 .ab-s{background:var(--sc);height:100%}
 .ab-txt{font-size:10px;color:var(--txf);font-variant-numeric:tabular-nums}
 .fv{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.fg{color:var(--green)}.fy{color:var(--yellow)}
+.fg{color:var(--green)}.fy{color:var(--yellow)}.fr{color:#e74c3c}
 .card-metrics{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .mm{text-align:center;min-width:44px}
 .mm-l{font-size:9px;color:var(--txg);margin-bottom:1px}
@@ -154,17 +155,17 @@ const DATA=__DATA_PLACEHOLDER__;
 let curReg="uk",curSort="roas",expAll=false,expId=null;
 
 /* ── COLOR LOGIC: Green ≥2x, Yellow <2x, no red ── */
-function gs(r){return r>=2?"strong":r>0?"moderate":"inactive"}
-function rc(r){return r>=2?"var(--gd)":r>0?"var(--yd)":"var(--txd)"}
-function fc(f){return f>=2?"fg":"fy"}
-function fa(f){return f>=2?"var(--green)":"var(--yellow)"}
+function gs(r,spend){return r>=2?"strong":r>0?"moderate":spend>0?"underperforming":"inactive"}
+function rc(r,spend){return r>=2?"var(--gd)":r>0?"var(--yd)":spend>0?"#e74c3c":"var(--txd)"}
+function fc(f){return f>=2.2?"fr":f>=2?"fg":"fy"}
+function fa(f){return f>=2.2?"#e74c3c":f>=2?"var(--green)":"var(--yellow)"}
 function fmt(n,c){return c+n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmtI(n,c){return c+Math.round(n).toLocaleString("en-GB")}
 function esc(s){const d=document.createElement("div");d.textContent=s;return d.innerHTML}
 function fst(f){const m={TOF:{bg:"var(--tof-bg)",fg:"var(--tof-fg)",bd:"var(--tof-bd)"},MOF:{bg:"var(--mof-bg)",fg:"var(--mof-fg)",bd:"var(--mof-bd)"},BOF:{bg:"var(--bof-bg)",fg:"var(--bof-fg)",bd:"var(--bof-bd)"}};return m[f]||m.TOF}
 function paf(s){const m=s.match(/(\d+)\s*video\s*\/\s*(\d+)\s*static/i);return m?{v:+m[1],s:+m[2]}:null}
 function csum(c){const a=c.filter(x=>x.spend>0),ts=c.reduce((s,x)=>s+x.spend,0),tp=c.reduce((s,x)=>s+x.purchases,0),tr=c.reduce((s,x)=>s+x.purchaseValue,0);return{totalSpend:ts,totalPurchases:tp,totalRevenue:tr,blendedROAS:ts>0?tr/ts:0,avgCPP:tp>0?ts/tp:0,avgAOV:tp>0?tr/tp:0,avgFreq:a.length>0?a.reduce((s,x)=>s+x.frequency,0)/a.length:0,activeCount:a.length,totalCount:c.length}}
-function ssort(c,by){const s=[...c];const m={roas:(a,b)=>b.roas-a.roas,spend:(a,b)=>b.spend-a.spend,revenue:(a,b)=>b.purchaseValue-a.purchaseValue,purchases:(a,b)=>b.purchases-a.purchases,cpp:(a,b)=>a.costPerPurchase-b.costPerPurchase,aov:(a,b)=>b.avgOrderValue-a.avgOrderValue,frequency:(a,b)=>b.frequency-a.frequency};s.sort(m[by]||m.roas);return s}
+function ssort(c,by){const s=[...c];const m={roas:(a,b)=>b.roas-a.roas,spend:(a,b)=>b.spend-a.spend,revenue:(a,b)=>b.purchaseValue-a.purchaseValue,purchases:(a,b)=>b.purchases-a.purchases,cpp:(a,b)=>{const ap=a.purchases>0?a.costPerPurchase:Infinity;const bp=b.purchases>0?b.costPerPurchase:Infinity;return ap-bp},aov:(a,b)=>b.avgOrderValue-a.avgOrderValue,frequency:(a,b)=>b.frequency-a.frequency};s.sort(m[by]||m.roas);return s}
 
 /* ── STORE SECTION ── */
 function renderStore(){
@@ -187,7 +188,7 @@ function renderKPIs(){const d=DATA[curReg],cur=d.currency,s=csum(d.campaigns),ra
 function kpi(l,v,s,a){return'<div class="kpi-card"><div class="ab" style="background:'+a+'"></div><div class="kpi-label">'+l+'</div><div class="kpi-value">'+v+'</div><div class="kpi-sub">'+s+'</div></div>'}
 
 /* ── CHARTS ── */
-function renderSpendChart(){const d=DATA[curReg],cur=d.currency,a=d.campaigns.filter(c=>c.spend>0).sort((a,b)=>b.purchaseValue-a.purchaseValue),mx=Math.max(...a.map(c=>c.purchaseValue),1);let h='<div class="chart-title">Spend vs Revenue</div>';a.forEach(c=>{h+='<div class="bar-row"><div class="bar-label">'+esc(c.shortName)+'</div><div class="bar-track"><div class="bar-rev" style="width:'+(c.purchaseValue/mx*100).toFixed(1)+'%"></div><div class="bar-spd" style="width:'+(c.spend/mx*100).toFixed(1)+'%"></div></div><div class="bar-roas" style="color:'+rc(c.roas)+'">'+c.roas+'x</div></div>'});h+='<div class="chart-legend"><span><span class="ld" style="background:var(--accent);opacity:.65"></span> Spend</span><span><span class="ld" style="background:#e0e7ff"></span> Revenue</span></div>';document.getElementById("spend-chart").innerHTML=h}
+function renderSpendChart(){const d=DATA[curReg],cur=d.currency,a=d.campaigns.filter(c=>c.spend>0).sort((a,b)=>b.purchaseValue-a.purchaseValue),mx=Math.max(...a.map(c=>c.purchaseValue),1);let h='<div class="chart-title">Spend vs Revenue</div>';a.forEach(c=>{h+='<div class="bar-row"><div class="bar-label">'+esc(c.shortName)+'</div><div class="bar-track"><div class="bar-rev" style="width:'+(c.purchaseValue/mx*100).toFixed(1)+'%"></div><div class="bar-spd" style="width:'+(c.spend/mx*100).toFixed(1)+'%"></div></div><div class="bar-roas" style="color:'+rc(c.roas,c.spend)+'">'+c.roas+'x</div></div>'});h+='<div class="chart-legend"><span><span class="ld" style="background:var(--accent);opacity:.65"></span> Spend</span><span><span class="ld" style="background:#e0e7ff"></span> Revenue</span></div>';document.getElementById("spend-chart").innerHTML=h}
 
 function renderFunnelChart(){const d=DATA[curReg],cur=d.currency,fn={};d.campaigns.filter(c=>c.spend>0).forEach(c=>{if(!fn[c.funnelStage])fn[c.funnelStage]={sp:0,rv:0,p:0,n:0};fn[c.funnelStage].sp+=c.spend;fn[c.funnelStage].rv+=c.purchaseValue;fn[c.funnelStage].p+=c.purchases;fn[c.funnelStage].n++});const ord=["TOF","MOF","BOF"],clr={TOF:"var(--tof-bar)",MOF:"var(--mof-bar)",BOF:"var(--bof-bar)"},lbl={TOF:"Top of Funnel",MOF:"Mid Funnel",BOF:"Bottom Funnel"};let h='<div class="chart-title">Funnel Breakdown</div>';ord.filter(f=>fn[f]).forEach(f=>{const x=fn[f],r=x.sp>0?(x.rv/x.sp).toFixed(2):"0.00";h+='<div class="funnel-card" style="background:color-mix(in srgb,'+clr[f]+' 6%,white);border:1px solid color-mix(in srgb,'+clr[f]+' 18%,white)"><div class="funnel-header"><div><span class="funnel-stage" style="color:'+clr[f]+'">'+f+'</span><span class="funnel-sub">'+lbl[f]+'</span></div><span class="funnel-roas">'+r+'x</span></div><div class="funnel-meta"><span>'+cur+Math.round(x.sp)+' spend</span><span>'+x.p+' purchases</span><span>'+x.n+' campaign'+(x.n>1?"s":"")+'</span></div></div>'});document.getElementById("funnel-chart").innerHTML=h}
 
@@ -195,11 +196,11 @@ function renderFunnelChart(){const d=DATA[curReg],cur=d.currency,fn={};d.campaig
 function renderSortBar(){const d=DATA[curReg],sorts=[{k:"roas",l:"ROAS"},{k:"spend",l:"Spend"},{k:"revenue",l:"Revenue"},{k:"purchases",l:"Purch."},{k:"cpp",l:"CPP"},{k:"aov",l:"AOV"},{k:"frequency",l:"Freq."}];let h='<div class="sort-left"><span class="sort-label">Campaigns ('+d.campaigns.length+')</span><button class="expand-btn" onclick="toggleExp()">'+(expAll?"Collapse All":"Expand All")+'</button></div><div class="sort-btns">';sorts.forEach(s=>{h+='<button class="sort-btn '+(curSort===s.k?"active":"")+'" onclick="chSort(\''+s.k+'\')">'+s.l+'</button>'});h+='</div>';document.getElementById("sort-bar").innerHTML=h}
 
 /* ── CAMPAIGNS ── */
-function renderCampaigns(){const d=DATA[curReg],cur=d.currency,sorted=ssort(d.campaigns,curSort);let h="";sorted.forEach((c,idx)=>{const st=c.spend===0?"inactive":gs(c.roas),isE=expAll||expId===c.id,f=fst(c.funnelStage),af=paf(c.adFormatSplit);const afH=af?(()=>{const t=af.v+af.s||1;return'<div class="ab-wrap"><div class="ab-track">'+(af.v>0?'<div class="ab-v" style="width:'+af.v/t*100+'%"></div>':'')+(af.s>0?'<div class="ab-s" style="width:'+af.s/t*100+'%"></div>':'')+'</div><span class="ab-txt">'+af.v+'V\u00b7'+af.s+'S</span></div>'})():'<span class="ab-txt">'+esc(c.adFormatSplit)+'</span>';const rp=Math.min(c.roas/5*100,100),share=d.totalSpendRef>0?((c.spend/d.totalSpendRef)*100).toFixed(1):"0.0";
+function renderCampaigns(){const d=DATA[curReg],cur=d.currency,sorted=ssort(d.campaigns,curSort);let h="";sorted.forEach((c,idx)=>{const st=c.spend===0?"inactive":gs(c.roas,c.spend),isE=expAll||expId===c.id,f=fst(c.funnelStage),af=paf(c.adFormatSplit);const afH=af?(()=>{const t=af.v+af.s||1;return'<div class="ab-wrap"><div class="ab-track">'+(af.v>0?'<div class="ab-v" style="width:'+af.v/t*100+'%"></div>':'')+(af.s>0?'<div class="ab-s" style="width:'+af.s/t*100+'%"></div>':'')+'</div><span class="ab-txt">'+af.v+'V\u00b7'+af.s+'S</span></div>'})():'<span class="ab-txt">'+esc(c.adFormatSplit)+'</span>';const rp=Math.min(c.roas/5*100,100),share=d.totalSpendRef>0?((c.spend/d.totalSpendRef)*100).toFixed(1):"0.0";
 h+='<div class="campaign-card '+(isE?"expanded":"")+'" style="animation-delay:'+idx*.04+'s" id="card-'+c.id+'">';
 h+='<div class="card-header" onclick="toggleCard('+c.id+')"><span class="sd sd-'+st+'"></span><div class="card-info"><div class="card-name">'+esc(c.shortName)+'</div><div class="card-tags"><span class="pill" style="background:'+f.bg+';color:'+f.fg+';border:1px solid '+f.bd+'">'+c.funnelStage+'</span>'+afH+'<span class="fv '+fc(c.frequency)+'">'+c.frequency.toFixed(2)+'</span></div></div><div class="card-metrics">';
 [{l:"Spend",v:cur+Math.round(c.spend)},{l:"Purch.",v:c.purchases},{l:"Revenue",v:cur+Math.round(c.purchaseValue)},{l:"CPP",v:cur+c.costPerPurchase.toFixed(0)},{l:"AOV",v:cur+c.avgOrderValue.toFixed(0)}].forEach(m=>{h+='<div class="mm"><div class="mm-l">'+m.l+'</div><div class="mm-v">'+m.v+'</div></div>'});
-h+='<div class="rb-w"><div class="rb-t"><div class="rb-f" style="width:'+rp+'%;background:'+rc(c.roas)+'"></div></div><span class="rb-v" style="color:'+rc(c.roas)+'">'+c.roas.toFixed(2)+'x</span></div><span class="chev">\u25be</span></div></div>';
+h+='<div class="rb-w"><div class="rb-t"><div class="rb-f" style="width:'+rp+'%;background:'+rc(c.roas,c.spend)+'"></div></div><span class="rb-v" style="color:'+rc(c.roas,c.spend)+'">'+c.roas.toFixed(2)+'x</span></div><span class="chev">\u25be</span></div></div>';
 if(isE){h+='<div class="card-detail"><div class="ds id-sec"><div class="st">Campaign Identity</div><div class="id-grid">';
 [{l:"Full Campaign Name",v:c.campaignName},{l:"Account Name",v:c.accountName},{l:"Report Date",v:c.reportDate},{l:"Date Range",v:c.dateRange}].forEach(i=>{h+='<div><div class="id-l">'+i.l+'</div><div class="id-v">'+esc(i.v)+'</div></div>'});
 h+='</div></div><div class="ds"><div class="st">Performance Metrics</div><div class="mg">';
