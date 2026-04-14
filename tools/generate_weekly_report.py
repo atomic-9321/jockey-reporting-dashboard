@@ -177,13 +177,17 @@ def load_ecosystem_data(region: str) -> Optional[Dict]:
 def find_ecosystem_row(eco_data: Dict, cw_num: int, year: Optional[int] = None) -> Optional[Dict]:
     """Aggregate daily ecosystem rows that fall within a calendar week.
 
+    Uses the main EcoSystem sheet (skips archive sheets like '2025').
+    Pulls store-level metrics from the 'webshop' section, ad spend from
+    'total_summary', and email share from the 'email' section.
+
     Args:
         eco_data: Ecosystem data dict with "sheets" key containing daily rows.
         cw_num: Calendar week number to match.
         year: ISO year for the calendar week. Defaults to current year.
 
     Returns:
-        Aggregated total_summary metrics dict, or None if no data found.
+        Aggregated store metrics dict, or None if no data found.
     """
     if not eco_data or "sheets" not in eco_data:
         return None
@@ -195,51 +199,86 @@ def find_ecosystem_row(eco_data: Dict, cw_num: int, year: Optional[int] = None) 
     start_str = start_date.isoformat()
     end_str = end_date.isoformat()
 
-    # Collect daily rows within the CW date range across all sheets
+    # Only use the main EcoSystem sheet (skip archive sheets like '2025')
+    # Deduplicate by date (spreadsheet may have multiple sub-tables)
     matching_rows = []
+    seen_dates = set()
     for sheet_name, sheet_data in eco_data["sheets"].items():
         if not isinstance(sheet_data, dict):
             continue
+        if sheet_name.isdigit():
+            continue
         for row in sheet_data.get("daily", []):
             row_date = row.get("date", "")
-            if start_str <= row_date <= end_str:
+            if start_str <= row_date <= end_str and row_date not in seen_dates:
+                # Skip rows from empty sub-tables (all None values)
+                ws = row.get("webshop", {})
+                if ws.get("total_revenue") is None:
+                    continue
+                seen_dates.add(row_date)
                 matching_rows.append(row)
 
     if not matching_rows:
         return None
 
-    # Aggregate total_summary metrics across matching days
-    additive_keys = ["ad_spend", "total_conversions", "total_revenue", "profit"]
-    totals: Dict[str, float] = {}
+    # Aggregate webshop (store-level) metrics across matching days
+    webshop_totals: Dict[str, float] = {}
+    webshop_additive = ["total_conversions", "total_revenue", "profit"]
+    ad_spend_total = 0.0
+    email_revenue_total = 0.0
+    email_pct_values = []
 
     for row in matching_rows:
+        # Webshop data (full store)
+        webshop = row.get("webshop", {})
+        if webshop:
+            for key in webshop_additive:
+                val = webshop.get(key)
+                if val is not None:
+                    try:
+                        webshop_totals[key] = webshop_totals.get(key, 0) + float(val)
+                    except (ValueError, TypeError):
+                        pass
+
+        # Ad spend from total_summary
         summary = row.get("total_summary", {})
-        if not summary:
-            continue
-        for key in additive_keys:
-            val = summary.get(key)
-            if val is not None:
+        if summary:
+            spend_val = summary.get("ad_spend")
+            if spend_val is not None:
                 try:
-                    totals[key] = totals.get(key, 0) + float(val)
+                    ad_spend_total += float(spend_val)
                 except (ValueError, TypeError):
                     pass
 
-    if not totals:
+        # Email revenue for % of revenue calculation
+        email = row.get("email", {})
+        if email:
+            email_rev = email.get("total_revenue")
+            if email_rev is not None:
+                try:
+                    email_revenue_total += float(email_rev)
+                except (ValueError, TypeError):
+                    pass
+
+    if not webshop_totals:
         return None
 
     # Compute derived metrics
-    revenue = totals.get("total_revenue", 0)
-    conversions = totals.get("total_conversions", 0)
-    spend = totals.get("ad_spend", 0)
-    profit = totals.get("profit", 0)
+    revenue = webshop_totals.get("total_revenue", 0)
+    conversions = webshop_totals.get("total_conversions", 0)
+    profit = webshop_totals.get("profit", 0)
+
+    # Email % of total store revenue
+    email_pct = round(email_revenue_total / revenue * 100, 1) if revenue > 0 else 0.0
 
     return {
         "total_revenue": round(revenue, 2),
         "total_conversions": round(conversions),
-        "total_cpa": round(spend / conversions, 2) if conversions > 0 else 0,
+        "total_cpa": round(ad_spend_total / conversions, 2) if conversions > 0 else 0,
         "profit": round(profit, 2),
-        "total_roas": round(revenue / spend, 2) if spend > 0 else 0,
+        "total_roas": round(revenue / ad_spend_total, 2) if ad_spend_total > 0 else 0,
         "aov": round(revenue / conversions, 2) if conversions > 0 else 0,
+        "email_pct_of_revenue": email_pct,
     }
 
 
@@ -350,6 +389,7 @@ def build_store_data(
     profit = _safe_float(eco_metrics.get("Profit", eco_metrics.get("profit", 0)))
     roas = _safe_float(eco_metrics.get("Total ROAS", eco_metrics.get("total_roas", 0)))
     aov = _safe_float(eco_metrics.get("AOV", eco_metrics.get("aov", 0)))
+    email_pct = _safe_float(eco_metrics.get("email_pct_of_revenue", 0))
 
     return {
         "reportDate": end_date.isoformat(),
@@ -360,6 +400,7 @@ def build_store_data(
         "profit": round(profit, 2),
         "totalROAS": round(roas, 2),
         "aov": round(aov, 2),
+        "emailPctOfRevenue": round(email_pct, 1),
     }
 
 

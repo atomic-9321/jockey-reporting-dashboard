@@ -177,7 +177,8 @@ function renderStore(){
    {l:"Store ROAS",v:st.totalROAS.toFixed(2)+"x",s:st.totalROAS>=2?"Strong performance":"",a:st.totalROAS>=2?"var(--green)":"var(--yellow)"},
    {l:"Store AOV",v:fmt(st.aov,cur),s:"Average order value",a:"var(--sc)"},
    {l:"Store CPA",v:fmt(st.totalCPA,cur),s:"Cost per acquisition",a:"var(--txm)"},
-   {l:"% of Revenue",v:(st.pctOfRevenue||0).toFixed(1)+"%",s:"Paid media share",a:"var(--vc)"}
+   {l:"Paid % of Revenue",v:(st.pctOfRevenue||0).toFixed(1)+"%",s:"Paid media share",a:"var(--vc)"},
+   {l:"Email % of Revenue",v:(st.emailPctOfRevenue||0).toFixed(1)+"%",s:"Email channel share",a:"var(--accent)"}
   ].forEach(c=>{h+='<div class="store-card"><div class="s-bar" style="background:'+c.a+'"></div><div class="s-label">'+c.l+'</div><div class="s-value'+(c.b?" large":"")+'">'+c.v+'</div>'+(c.s?'<div class="s-sub">'+c.s+'</div>':'')+'</div>'});
   h+='</div></div>';
   document.getElementById("store-section").innerHTML=h;
