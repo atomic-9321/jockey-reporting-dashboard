@@ -63,8 +63,8 @@ jobs:
   weekly-report:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Run on Monday cron triggers only
-    if: github.event_name == 'schedule'
+    # Run on Monday schedule or manual dispatch
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: refresh
 
     steps:
@@ -87,18 +87,27 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DASHBOARD_BASE_URL: ${{ secrets.DASHBOARD_BASE_URL }}
         run: |
-          DAY_OF_WEEK=$(date +%u)
-          # Only run on Mondays
-          if [ "$DAY_OF_WEEK" != "1" ]; then
-            echo "Not Monday — skipping weekly report generation"
-            exit 0
+          # On schedule triggers, only run on Mondays; manual dispatch always runs
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            DAY_OF_WEEK=$(date +%u)
+            if [ "$DAY_OF_WEEK" != "1" ]; then
+              echo "Not Monday — skipping weekly report generation"
+              exit 0
+            fi
           fi
 
-          # Calculate previous week's CW
+          # Calculate the most recent completed CW
           CW=$(python3 -c "
           from datetime import date, timedelta
           today = date.today()
-          last_monday = today - timedelta(days=today.weekday() + 7)
+          # Find the most recent completed week (last Sunday)
+          days_since_monday = today.weekday()
+          if days_since_monday == 0:
+              # Monday: previous week completed yesterday
+              last_monday = today - timedelta(days=7)
+          else:
+              # Other days: find the Monday of the most recent completed week
+              last_monday = today - timedelta(days=days_since_monday + 7)
           iso = last_monday.isocalendar()
           print(f'{iso[0]}-CW{iso[1]:02d}')
           ")

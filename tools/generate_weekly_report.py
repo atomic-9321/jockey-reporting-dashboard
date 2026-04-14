@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.utils.date_utils import cw_to_date_range, get_calendar_week, cw_label
-from tools.utils.blob_client import download_json
+from tools.utils.blob_client import download_json, upload_text
 from tools.utils.insights import generate_ai_insights
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -545,7 +545,7 @@ def generate_report(cw_key: str, regions: List[str] = None) -> str:
 
 
 def save_report(html: str, year: int, cw: int) -> Path:
-    """Save the report HTML to weeks/CW##_MonDD_MonDD_YYYY/."""
+    """Save the report HTML locally and upload to Vercel Blob."""
     start_date, end_date = cw_to_date_range(year, cw)
     start_str = start_date.strftime("%b%d")
     end_str = end_date.strftime("%b%d")
@@ -556,6 +556,14 @@ def save_report(html: str, year: int, cw: int) -> Path:
     filename = f"Weekly_Report_CW{cw:02d}_{start_str}_{end_str}_{year}.html"
     output_path = week_folder / filename
     output_path.write_text(html, encoding="utf-8")
+
+    # Upload to Vercel Blob for persistence
+    blob_path = f"reports/{filename}"
+    try:
+        upload_text(blob_path, html, content_type="text/html")
+        logger.info(f"Report uploaded to Blob: {blob_path}")
+    except Exception as e:
+        logger.warning(f"Blob upload failed (report saved locally): {e}")
 
     return output_path
 

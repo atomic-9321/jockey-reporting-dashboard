@@ -80,6 +80,54 @@ def upload_json(filename: str, data: Any) -> str:
     return filepath
 
 
+def upload_text(filename: str, content: str, content_type: str = "text/html") -> str:
+    """Upload text content (e.g. HTML) to Vercel Blob or local file.
+
+    Args:
+        filename: The blob/file name (e.g., 'reports/Weekly_Report_CW15.html')
+        content: The text content to upload
+        content_type: MIME type (default: text/html)
+
+    Returns:
+        The URL or path where the content was stored
+    """
+    if _is_production():
+        try:
+            import requests
+
+            token = os.getenv("BLOB_READ_WRITE_TOKEN")
+            resp = requests.put(
+                f"https://blob.vercel-storage.com/{filename}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/octet-stream",
+                    "x-api-version": "7",
+                    "x-content-type": content_type,
+                    "x-vercel-blob-access": "private",
+                    "x-add-random-suffix": "0",
+                    "x-allow-overwrite": "1",
+                },
+                data=content.encode("utf-8"),
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            url = result.get("url", "")
+            logger.info(f"Uploaded {filename} to Vercel Blob: {url}")
+            return url
+        except Exception as e:
+            logger.error(f"Vercel Blob upload failed for {filename}: {e}")
+            logger.info("Falling back to local storage")
+
+    # Local storage
+    _ensure_local_dirs()
+    filepath = os.path.join(LOCAL_DATA_DIR, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    logger.info(f"Saved {filename} locally: {filepath}")
+    return filepath
+
+
 def download_json(filename: str) -> Optional[Any]:
     """Download JSON data from Vercel Blob or local file.
 
